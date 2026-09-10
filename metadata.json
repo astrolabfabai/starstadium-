@@ -1,0 +1,6 @@
+{
+  "name": "StarStadium",
+  "description": "StarStadium - Comprehensive NFL analytics studio, live scoreboard, Win Probability Engine with real-time line charts, tactical play-by-play visualizer, EPA quadrant scatter matrices, 4th down decision engine, and live NFL game feeds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
