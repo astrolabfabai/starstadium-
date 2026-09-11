@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { SeasonCode, SEASONS_LIST } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { GameSchedule, SeasonCode, SEASONS_LIST } from '../../types';
 import {
   BarChart,
   Bar,
@@ -14,7 +14,7 @@ import {
   Cell
 } from 'recharts';
 import { SCHEDULES_DATA } from '../../data/sportsDataMock';
-import { Calendar, CloudSun, MapPin, Tv, Thermometer, Wind, Filter } from 'lucide-react';
+import { Calendar, CloudSun, MapPin, Tv, Thermometer, Wind, Filter, RefreshCw } from 'lucide-react';
 
 const SURFACE_COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
 
@@ -29,19 +29,43 @@ export const ScheduleVenueView: React.FC<ScheduleVenueViewProps> = ({
   onSeasonChange,
   onSelectGame
 }) => {
-  const [selectedWeek, setSelectedWeek] = useState<number | 'ALL'>('ALL');
+  const [selectedWeek, setSelectedWeek] = useState<number | 'ALL'>(1);
   const [selectedSurface, setSelectedSurface] = useState<string>('ALL');
+  const [schedulesList, setSchedulesList] = useState<GameSchedule[]>(SCHEDULES_DATA);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const targetYear = parseInt(selectedSeason.substring(0, 4)) || 2026;
   const targetType = selectedSeason.substring(4) || 'REG';
 
+  useEffect(() => {
+    const fetchSchedules = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/sportsdata/schedules?season=${targetYear}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+            setSchedulesList(json.data);
+          } else if (Array.isArray(json) && json.length > 0) {
+            setSchedulesList(json);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch live schedules, using fallback:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSchedules();
+  }, [targetYear]);
+
   // Filter schedules matching target season year and type
-  const seasonMatch = SCHEDULES_DATA.filter((s) => s.Season === targetYear && s.SeasonType === targetType);
-  const yearMatch = SCHEDULES_DATA.filter((s) => s.Season === targetYear);
-  const activeSchedulesList = seasonMatch.length > 0 ? seasonMatch : (yearMatch.length > 0 ? yearMatch : SCHEDULES_DATA);
+  const seasonMatch = schedulesList.filter((s) => s.Season === targetYear && s.SeasonType === targetType);
+  const yearMatch = schedulesList.filter((s) => s.Season === targetYear);
+  const activeSchedulesList = seasonMatch.length > 0 ? seasonMatch : (yearMatch.length > 0 ? yearMatch : schedulesList);
 
   const availableWeeks = Array.from(new Set(activeSchedulesList.map((s) => s.Week)))
-    .filter((w) => typeof w === 'number' && w > 0)
+    .filter((w): w is number => typeof w === 'number' && w > 0)
     .sort((a, b) => a - b);
 
   const filteredSchedules = activeSchedulesList.filter((s) => {
@@ -80,21 +104,12 @@ export const ScheduleVenueView: React.FC<ScheduleVenueViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Season Inline Picker */}
-            <div className="flex items-center gap-1.5 bg-[#09090b] px-2.5 py-1 rounded border border-white/10 text-xs">
+            {/* Current Season Badge (Locked to Current Season) */}
+            <div className="flex items-center gap-1.5 bg-[#09090b] px-2.5 py-1 rounded border border-amber-500/30 text-xs font-mono">
               <Calendar className="w-3.5 h-3.5 text-amber-500" />
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Season:</span>
-              <select
-                value={selectedSeason}
-                onChange={(e) => onSeasonChange && onSeasonChange(e.target.value as SeasonCode)}
-                className="bg-transparent text-amber-400 font-bold font-mono focus:outline-none cursor-pointer"
-              >
-                {SEASONS_LIST.map((s) => (
-                  <option key={s.code} value={s.code} className="bg-[#121214] text-slate-200">
-                    {s.label} ({s.code})
-                  </option>
-                ))}
-              </select>
+              <span className="text-amber-400 font-bold">2026 Regular Season</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 uppercase">Current</span>
             </div>
 
             {/* Week Filter */}

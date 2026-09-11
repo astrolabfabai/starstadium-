@@ -61,18 +61,18 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
         if (data.games && Array.isArray(data.games) && data.games.length > 0) {
           // Format API response into LiveGameCardData
           const formatted: LiveGameCardData[] = data.games.map((g: any, idx: number) => {
-            const isLive = g.status === 'InProgress' || (typeof g.status === 'string' && g.status.toLowerCase().includes('in progress')) || idx === 0;
-            const homeScore = parseInt(g.homeTeam?.score || '0', 10) || (idx === 0 ? 27 : 21);
-            const awayScore = parseInt(g.awayTeam?.score || '0', 10) || (idx === 0 ? 24 : 14);
-            const quarterStr = g.period ? `Q${g.period}` : (g.quarter || (isLive ? (idx === 0 ? 'Q4' : 'Q3') : 'Final'));
-            const clockSecs = typeof g.clockSeconds === 'number' && g.clockSeconds > 0 ? g.clockSeconds : (isLive ? (idx === 0 ? 135 : 494) : 0);
+            const isLive = g.status === 'InProgress' || (typeof g.status === 'string' && g.status.toLowerCase().includes('in progress'));
+            const homeScore = typeof g.homeTeam?.score === 'number' ? g.homeTeam.score : parseInt(g.homeTeam?.score || '0', 10);
+            const awayScore = typeof g.awayTeam?.score === 'number' ? g.awayTeam.score : parseInt(g.awayTeam?.score || '0', 10);
+            const quarterStr = g.quarter || (g.period ? `Q${g.period}` : (isLive ? 'Q1' : (g.status === 'Final' ? 'Final' : 'Pregame')));
+            const clockSecs = typeof g.clockSeconds === 'number' && g.clockSeconds >= 0 ? g.clockSeconds : (isLive ? 120 : 0);
             
             const mins = Math.floor(clockSecs / 60);
             const secs = clockSecs % 60;
-            const clockFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            const clockFormatted = g.clock || `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 
-            const downDist = g.downDistance || (idx === 0 ? '3rd & 4 at BAL 38' : '2nd & 7 at PHI 45');
-            const isRedZone = downDist.includes('at') && parseInt(downDist.split('at')[1]?.trim()?.split(' ')?.[1] || '50', 10) <= 20;
+            const downDist = g.downDistance || '';
+            const isRedZone = Boolean(g.isRedZone || (downDist.includes('at') && parseInt(downDist.split('at')[1]?.trim()?.split(' ')?.[1] || '50', 10) <= 20));
 
             return {
               id: g.id || g.GameKey || `game-${idx}`,
@@ -81,7 +81,7 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
                 name: g.awayTeam?.name || g.AwayTeam || 'Away Team',
                 abbreviation: g.awayTeam?.abbreviation || g.AwayTeam || 'AWY',
                 score: awayScore,
-                record: g.awayTeam?.record || (idx === 0 ? '3-0' : '2-1'),
+                record: g.awayTeam?.record || '0-0',
                 color: g.awayTeam?.color || '#ef4444',
                 logo: g.awayTeam?.logo
               },
@@ -89,7 +89,7 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
                 name: g.homeTeam?.name || g.HomeTeam || 'Home Team',
                 abbreviation: g.homeTeam?.abbreviation || g.HomeTeam || 'KC',
                 score: homeScore,
-                record: g.homeTeam?.record || (idx === 0 ? '3-0' : '3-0'),
+                record: g.homeTeam?.record || '0-0',
                 color: g.homeTeam?.color || '#3b82f6',
                 logo: g.homeTeam?.logo
               },
@@ -118,36 +118,43 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
       console.warn('Using mock live game scores:', e);
     }
 
-    // Fallback Mock Data with real game feel
-    const fallbackList: LiveGameCardData[] = SCHEDULES_DATA.slice(0, 4).map((g, idx) => {
-      const isLive = idx === 0 || idx === 1;
-      const isFinal = idx === 2;
+    // Fallback Mock Data: This week's games sorted starting at the first game of the week
+    const thisWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
+    thisWeekSchedules.sort((a, b) => {
+      const dateA = new Date(`${a.Date}T${a.Time || '13:00'}:00`).getTime();
+      const dateB = new Date(`${b.Date}T${b.Time || '13:00'}:00`).getTime();
+      return dateA - dateB;
+    });
+
+    const fallbackList: LiveGameCardData[] = thisWeekSchedules.slice(0, 8).map((g, idx) => {
+      const isLive = g.Status === 'InProgress';
+      const isFinal = g.Status === 'Final';
       return {
         id: g.GameKey || `game-${idx}`,
         gameKey: g.GameKey || `20261010${idx + 1}`,
         awayTeam: {
           name: g.AwayTeam,
           abbreviation: g.AwayTeam,
-          score: idx === 0 ? 24 : (idx === 1 ? 17 : (idx === 2 ? 31 : 0)),
-          record: '3-0',
+          score: g.AwayScore ?? 0,
+          record: '0-0',
           color: '#ef4444'
         },
         homeTeam: {
           name: g.HomeTeam,
           abbreviation: g.HomeTeam,
-          score: idx === 0 ? 27 : (idx === 1 ? 21 : (idx === 2 ? 17 : 0)),
-          record: '3-0',
+          score: g.HomeScore ?? 0,
+          record: '0-0',
           color: '#3b82f6'
         },
-        quarter: isLive ? (idx === 0 ? 'Q4' : 'Q3') : (isFinal ? 'Final' : 'Pregame'),
-        clock: idx === 0 ? '2:15' : (idx === 1 ? '8:14' : '0:00'),
-        clockSeconds: idx === 0 ? 135 : (idx === 1 ? 494 : 0),
+        quarter: g.Quarter || (isLive ? 'Q4' : (isFinal ? 'Final' : 'Pregame')),
+        clock: g.TimeRemaining || (isLive ? '2:15' : '0:00'),
+        clockSeconds: g.ClockSeconds ?? (isLive ? 135 : 0),
         playClock: isLive ? 18 : 0,
-        possession: idx === 0 ? 'KC' : (idx === 1 ? 'PHI' : ''),
-        downDistance: idx === 0 ? '3rd & 4 at BAL 38' : '2nd & 7 at PHI 45',
-        isRedZone: idx === 0,
+        possession: g.Possession || (isLive ? g.HomeTeam : ''),
+        downDistance: g.DownDistance || (isLive ? '3rd & 4 at BAL 38' : (isFinal ? 'Final' : 'Pregame')),
+        isRedZone: isLive && Boolean(g.DownDistance && g.DownDistance.includes('Red Zone')),
         status: isLive ? 'InProgress' : (isFinal ? 'Final' : 'Scheduled'),
-        statusDetail: isLive ? (idx === 0 ? '4th Quarter 02:15' : '3rd Quarter 08:14') : (isFinal ? 'Final' : 'Sun 4:25 PM'),
+        statusDetail: isLive ? `${g.Quarter || 'Q4'} ${g.TimeRemaining || '02:15'}` : (isFinal ? 'Final Score' : `${g.Date} ${g.Time ? `${g.Time} ET` : 'Upcoming'}`),
         channel: g.Channel || 'NBC',
         venue: `${g.StadiumName}, ${g.StadiumCity}`,
         oddsSpread: g.PointSpread ? `${g.PointSpread > 0 ? '+' : ''}${g.PointSpread}` : '-3.5',
@@ -163,14 +170,17 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
     fetchLiveScores();
   }, []);
 
-  // Periodic Auto-refresh from API
+  // Check if any game is currently in progress
+  const hasLiveGames = games.some((g) => g.status === 'InProgress');
+
+  // Periodic Auto-refresh from API - STRICTLY only refresh during games
   useEffect(() => {
-    if (!isLiveAutoRefresh) return;
+    if (!isLiveAutoRefresh || !hasLiveGames) return;
     const interval = setInterval(() => {
       fetchLiveScores();
     }, 25000);
     return () => clearInterval(interval);
-  }, [isLiveAutoRefresh]);
+  }, [isLiveAutoRefresh, hasLiveGames]);
 
   // Live second-by-second Clock Countdown Engine
   useEffect(() => {
@@ -262,12 +272,23 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
           <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold tracking-wider">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             <Radio className="w-3.5 h-3.5" />
-            <span>LIVE NFL SCOREBOARD</span>
+            <span>THIS WEEK'S NFL SCORES</span>
           </div>
 
           <span className="text-xs text-slate-400 font-sans hidden md:inline">
-            Official SportsData.io Real-Time Game Feeds
+            Week 1 Slate &bull; Starts at Kickoff Game
           </span>
+
+          {hasLiveGames ? (
+            <span className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              Auto-Refresh: Active (Game in Progress)
+            </span>
+          ) : (
+            <span className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-800/80 border border-white/10 text-slate-400 font-mono text-[10px]">
+              Auto-Refresh: Idle (Only During Games)
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">

@@ -359,21 +359,12 @@ export const TeamStandingsWidget: React.FC<TeamStandingsWidgetProps> = ({
 
           {/* Quick Actions & Season Selector */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Season Selector */}
-            <div className="flex items-center gap-1.5 bg-[#18181b] px-3 py-1.5 rounded-lg border border-white/10 text-xs">
+            {/* Current Season Badge (Locked to Current Season) */}
+            <div className="flex items-center gap-1.5 bg-[#18181b] px-3 py-1.5 rounded-lg border border-amber-500/30 text-xs font-mono">
               <Calendar className="w-3.5 h-3.5 text-amber-500" />
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Season:</span>
-              <select
-                value={season}
-                onChange={(e) => setSeason(e.target.value as SeasonCode)}
-                className="bg-transparent text-amber-400 font-bold font-mono focus:outline-none cursor-pointer text-xs"
-              >
-                {SEASONS_LIST.map((s) => (
-                  <option key={s.code} value={s.code} className="bg-[#18181b] text-slate-200">
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+              <span className="text-amber-400 font-bold">2026 Regular Season</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 uppercase">Current</span>
             </div>
 
             {/* Refresh Button */}

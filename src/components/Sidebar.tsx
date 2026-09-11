@@ -203,61 +203,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Dynamic Season Selector Dropdown */}
+        {/* Current Season Campaign Display (Locked to Current Season) */}
         {!isCollapsed && (
-          <div className="p-3 border-b border-white/10 bg-[#0e0e11] relative">
+          <div className="p-3 border-b border-white/10 bg-[#0e0e11]">
             <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
               <span>NFL Season Campaign</span>
               <span className="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 text-[9px]">
-                API Auto-Sync
+                Current Season
               </span>
             </label>
-            <button
-              onClick={() => setShowSeasonDropdown(!showSeasonDropdown)}
-              className="w-full bg-[#141417] hover:bg-[#1a1a1f] border border-white/10 text-white rounded-xl px-3 py-2 text-xs font-bold flex items-center justify-between transition-all"
-            >
+            <div className="w-full bg-[#141417] border border-amber-500/30 text-white rounded-xl px-3 py-2 text-xs font-bold flex items-center justify-between">
               <div className="flex items-center gap-2 truncate">
                 <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="truncate">{currentSeasonObj.label}</span>
-              </div>
-              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showSeasonDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showSeasonDropdown && (
-              <div className="absolute top-full left-3 right-3 z-50 mt-1 bg-[#18181b] border border-white/15 rounded-xl shadow-2xl overflow-hidden animate-fadeIn">
-                <div className="p-1.5 space-y-1">
-                  {SEASONS_LIST.map((season) => {
-                    const isSelected = season.code === selectedSeason;
-                    return (
-                      <button
-                        key={season.code}
-                        onClick={() => {
-                          onSeasonChange(season.code);
-                          setShowSeasonDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-amber-500 text-slate-950 font-bold'
-                            : 'text-slate-300 hover:bg-white/10'
-                        }`}
-                      >
-                        <div>
-                          <p className="font-semibold">{season.label}</p>
-                          <p className={`text-[10px] ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
-                            {season.description}
-                          </p>
-                        </div>
-                        {season.code === '2026REG' && (
-                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${isSelected ? 'bg-slate-900 text-amber-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                            Active
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="truncate">
+                  <span className="block truncate text-amber-300 font-extrabold">{currentSeasonObj.label}</span>
+                  <span className="block text-[10px] text-slate-400 font-mono font-normal">Week 1 Kickoff Slate</span>
                 </div>
               </div>
-            )}
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                2026
+              </span>
+            </div>
           </div>
         )}
 

@@ -92,9 +92,16 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LIVE' | 'FINAL' | 'UPCOMING'>('ALL');
   const [selectedGameKey, setSelectedGameKey] = useState<string>(propSelectedGameKey || '202610101');
 
-  // Initialize live game state with all games from active season in SCHEDULES_DATA
+  // Initialize live game state with THIS WEEK'S games from 2026 Season, sorted chronologically starting at first game
   const [liveGames, setLiveGames] = useState<LiveGameState[]>(() => {
-    return SCHEDULES_DATA.map((g, idx) => {
+    const thisWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
+    thisWeekSchedules.sort((a, b) => {
+      const dateA = new Date(`${a.Date}T${a.Time || '13:00'}:00`).getTime();
+      const dateB = new Date(`${b.Date}T${b.Time || '13:00'}:00`).getTime();
+      return dateA - dateB;
+    });
+
+    return thisWeekSchedules.map((g, idx) => {
       const isLive = g.Status === 'InProgress';
       const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === g.HomeTeam);
       const awayTeamInfo = NFL_TEAMS.find((t) => t.Key === g.AwayTeam);
@@ -262,14 +269,69 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   const fetchLiveScoreboard = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/live/scoreboard');
+      const weekParam = selectedWeek === 'ALL' ? '' : `&week=${selectedWeek}`;
+      const res = await fetch(`/api/scores/live?season=${selectedSeason}${weekParam}`);
       if (res.ok) {
         const data = await res.json();
         setRawApiFeed(data);
-        if (data.games && data.games.length > 0) {
-          const isEspn = data.source === 'espn_live_api';
-          setIsLiveApi(isEspn);
+        if (data.games && Array.isArray(data.games) && data.games.length > 0) {
+          const isLiveFeed = data.source === 'sportsdata_io_live' || data.source === 'espn_live_api' || data.source === 'espn_realtime_feed';
+          setIsLiveApi(isLiveFeed);
           setLastUpdated(new Date().toLocaleTimeString());
+
+          const mappedGames: LiveGameState[] = data.games.map((g: any, idx: number) => {
+            const isLive = g.status === 'InProgress' || (typeof g.status === 'string' && g.status.toLowerCase().includes('in progress'));
+            const isFinal = g.status === 'Final' || (typeof g.status === 'string' && g.status.toLowerCase().includes('final'));
+            const homeScore = typeof g.homeTeam?.score === 'number' ? g.homeTeam.score : parseInt(g.homeTeam?.score || '0', 10);
+            const awayScore = typeof g.awayTeam?.score === 'number' ? g.awayTeam.score : parseInt(g.awayTeam?.score || '0', 10);
+            const gameWeek = typeof g.week === 'number' ? g.week : (typeof data.week === 'number' ? data.week : (selectedWeek === 'ALL' ? 1 : selectedWeek));
+
+            return {
+              id: g.id || `live-game-${idx}`,
+              gameKey: g.gameKey || String(g.GameKey || `20261010${idx + 1}`),
+              week: gameWeek,
+              awayTeam: {
+                abbreviation: g.awayTeam?.abbreviation || g.AwayTeam || 'AWY',
+                name: g.awayTeam?.name || g.AwayTeam || 'Away Team',
+                score: awayScore,
+                logo: g.awayTeam?.logo,
+                color: g.awayTeam?.color || '#ef4444'
+              },
+              homeTeam: {
+                abbreviation: g.homeTeam?.abbreviation || g.HomeTeam || 'HOM',
+                name: g.homeTeam?.name || g.HomeTeam || 'Home Team',
+                score: homeScore,
+                logo: g.homeTeam?.logo,
+                color: g.homeTeam?.color || '#3b82f6'
+              },
+              quarter: g.quarter || (isLive ? 'Q1' : (isFinal ? 'Final' : 'Pregame')),
+              clockSeconds: typeof g.clockSeconds === 'number' && g.clockSeconds >= 0 ? g.clockSeconds : (isLive ? 120 : 0),
+              playClock: g.playClock ?? (isLive ? 22 : 0),
+              possession: g.possession || (isLive ? g.awayTeam?.abbreviation || '' : ''),
+              downDistance: g.downDistance || (isLive ? '1st & 10' : (isFinal ? 'Final' : 'Pregame')),
+              timeoutsLeftHome: g.timeoutsLeftHome ?? 3,
+              timeoutsLeftAway: g.timeoutsLeftAway ?? 3,
+              status: isLive ? 'InProgress' : (isFinal ? 'Final' : 'Scheduled'),
+              statusDetail: g.statusDetail || (isLive ? `${g.quarter || 'Q1'} ${g.clock || '15:00'}` : (isFinal ? 'Final Score' : 'Scheduled')),
+              channel: g.broadcast || 'NBC',
+              venue: g.venue || 'NFL Stadium',
+              oddsSpread: g.odds?.spread || g.odds?.details || '-3.5',
+              oddsOu: g.odds?.overUnder || 'O/U 48.5',
+              isClockRunning: isLive
+            };
+          });
+
+          // Ensure strict chronological ordering starting at the first game of the week
+          mappedGames.sort((a, b) => {
+            const timeA = (a as any).date ? new Date((a as any).date).getTime() : 0;
+            const timeB = (b as any).date ? new Date((b as any).date).getTime() : 0;
+            return timeA - timeB;
+          });
+
+          setLiveGames(mappedGames);
+          if (mappedGames.length > 0 && !mappedGames.some((g) => g.gameKey === selectedGameKey)) {
+            setSelectedGameKey(mappedGames[0].gameKey);
+          }
         }
       }
     } catch (e) {
@@ -281,7 +343,20 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
 
   useEffect(() => {
     fetchLiveScoreboard();
-  }, []);
+  }, [selectedSeason, selectedWeek]);
+
+  // Check if any game is currently in progress
+  const hasActiveGames = liveGames.some((g) => g.status === 'InProgress');
+
+  // STRICT REQUIREMENT: Only auto-refresh during games
+  useEffect(() => {
+    if (!hasActiveGames) return; // Only refresh during games
+
+    const interval = setInterval(() => {
+      fetchLiveScoreboard();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [hasActiveGames, selectedSeason, selectedWeek]);
 
   const {
     unreadCount,
@@ -373,23 +448,25 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* Season Inline Picker */}
-            <div className="flex items-center gap-1 bg-[#09090b] px-2 py-0.5 rounded-md border border-white/10 text-[10px]">
-              <Calendar className="w-2.5 h-2.5 text-amber-500" />
-              <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Season:</span>
-              <select
-                value={selectedSeason}
-                onChange={(e) => onSeasonChange && onSeasonChange(e.target.value as SeasonCode)}
-                className="bg-transparent text-amber-400 font-bold font-mono focus:outline-none cursor-pointer text-[10px]"
-                aria-label="Select Season"
-              >
-                {SEASONS_LIST.map((s) => (
-                  <option key={s.code} value={s.code} className="bg-[#121214] text-slate-200">
-                    {s.label} ({s.code})
-                  </option>
-                ))}
-              </select>
+            {/* Current Season Badge (Locked to Current Season) */}
+            <div className="flex items-center gap-1.5 bg-[#09090b] px-2.5 py-1 rounded-md border border-amber-500/30 text-[10px] font-mono">
+              <Calendar className="w-3 h-3 text-amber-500" />
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[8px]">Season:</span>
+              <span className="text-amber-400 font-bold">2026 Regular Season</span>
+              <span className="text-[7px] bg-amber-500/20 text-amber-300 font-bold px-1 rounded uppercase">Current</span>
             </div>
+
+            {/* Auto-Refresh Status Badge: Only during games */}
+            {hasActiveGames ? (
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                Auto-Refresh: Active (Game in Progress)
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-slate-400 border border-white/10 text-[9px] font-mono flex items-center gap-1">
+                Auto-Refresh: Idle (Only During Games)
+              </span>
+            )}
 
             {/* Master Clock Play/Pause Toggle */}
             <button
@@ -546,42 +623,15 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono mr-0.5">
               Slate:
             </span>
-            <button
-              onClick={() => handleWeekChange(1)}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all flex items-center gap-1 ${
-                selectedWeek === 1
-                  ? 'bg-amber-500 text-slate-950 font-extrabold shadow-sm'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10'
-              }`}
-            >
-              <span>🏈 Wk 1</span>
-              <span className={`text-[8px] px-1 py-0.1 rounded-full ${selectedWeek === 1 ? 'bg-black/20 text-slate-950 font-black' : 'bg-white/10 text-slate-400'}`}>
-                {liveGames.filter(g => g.week === 1).length}
+            <div className="px-2.5 py-0.5 rounded-md text-[10px] font-bold font-mono bg-amber-500 text-slate-950 font-extrabold shadow-sm flex items-center gap-1.5">
+              <span>🏈 This Week (Week 1)</span>
+              <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-black/20 text-slate-950 font-black">
+                {liveGames.length} Games
               </span>
-            </button>
-            <button
-              onClick={() => handleWeekChange(2)}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all flex items-center gap-1 ${
-                selectedWeek === 2
-                  ? 'bg-amber-500 text-slate-950 font-extrabold shadow-sm'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10'
-              }`}
-            >
-              <span>Wk 2</span>
-              <span className={`text-[8px] px-1 py-0.1 rounded-full ${selectedWeek === 2 ? 'bg-black/20 text-slate-950 font-black' : 'bg-white/10 text-slate-400'}`}>
-                {liveGames.filter(g => g.week === 2).length}
-              </span>
-            </button>
-            <button
-              onClick={() => handleWeekChange('ALL')}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all flex items-center gap-1 ${
-                selectedWeek === 'ALL'
-                  ? 'bg-amber-500 text-slate-950 font-extrabold shadow-sm'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10'
-              }`}
-            >
-              <span>All</span>
-            </button>
+            </div>
+            <span className="text-[10px] text-amber-400/90 font-mono hidden sm:inline">
+              &bull; Starts with Kickoff Game: <strong>BAL @ KC</strong>
+            </span>
           </div>
 
           {/* Status Filter Pills with Emojis */}

@@ -53,6 +53,7 @@ interface DashboardGridProps {
   onSeasonChange?: (season: SeasonCode) => void;
   selectedGameKey?: string;
   onSelectGameKey?: (key: string) => void;
+  refreshKey?: number;
 }
 
 export const DashboardGrid: React.FC<DashboardGridProps> = ({
@@ -61,7 +62,8 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
   selectedSeason = '2026REG',
   onSeasonChange,
   selectedGameKey,
-  onSelectGameKey
+  onSelectGameKey,
+  refreshKey = 0
 }) => {
   const [widgets, setWidgets] = useState<WidgetConfig[]>(() => loadSavedWidgetLayout());
   const [isCustomizeMode, setIsCustomizeMode] = useState<boolean>(false);
@@ -314,7 +316,7 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
     return (
       <AnimatePresence mode="wait">
         <motion.div
-          key={activeView}
+          key={`${activeView}-${refreshKey}`}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}

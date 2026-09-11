@@ -127,6 +127,15 @@ async function startServer() {
   });
 
   // SportsData.io Current Season API Endpoint
+  // Cached in-memory references for live data
+  let cachedCurrentWeek: number = 1;
+  let cachedCurrentSeason: string = '2026REG';
+  let cachedTeams: any[] | null = null;
+  let cachedDepthCharts: any[] | null = null;
+  let cachedNews: any[] | null = null;
+  const cachedPlayersMap: Record<string, any[]> = {};
+  const cachedStandingsMap: Record<string, any[]> = {};
+
   // Used by frontend to determine which NFL season to display dynamically
   app.get(['/api/sportsdata/current-season', '/api/current-season'], async (req, res) => {
     const apiKey = (req.query.key as string) || process.env.SPORTSDATA_API_KEY;
@@ -136,7 +145,6 @@ async function startServer() {
         const sdRes = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/CurrentSeason?key=${apiKey}`);
         if (sdRes.ok) {
           const sdSeason = await sdRes.json();
-          // SportsData.io returns an integer like 2026 or string "2026REG" or object
           let seasonCode = '2026REG';
           let year = 2026;
           let seasonType: 'REG' | 'PRE' | 'POST' = 'REG';
@@ -154,11 +162,13 @@ async function startServer() {
             seasonCode = `${year}${seasonType}`;
           }
 
+          cachedCurrentSeason = seasonCode;
+
           return res.json({
             season: seasonCode,
             year,
             seasonType,
-            week: 4,
+            week: cachedCurrentWeek,
             source: 'sportsdata_io_current_season_api',
             label: `${year} NFL ${seasonType === 'PRE' ? 'Preseason' : (seasonType === 'POST' ? 'Postseason' : 'Regular Season')}`,
             timestamp: new Date().toISOString()
@@ -169,12 +179,11 @@ async function startServer() {
       }
     }
 
-    // Default determined active season based on 2026 calendar
     res.json({
       season: '2026REG',
       year: 2026,
       seasonType: 'REG',
-      week: 4,
+      week: cachedCurrentWeek,
       source: 'sportsdata_api_detected_season',
       label: '2026 NFL Regular Season',
       timestamp: new Date().toISOString()
@@ -189,8 +198,11 @@ async function startServer() {
         const sdRes = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/CurrentWeek?key=${apiKey}`);
         if (sdRes.ok) {
           const sdWeek = await sdRes.json();
+          if (typeof sdWeek === 'number' && sdWeek > 0) {
+            cachedCurrentWeek = sdWeek;
+          }
           return res.json({
-            week: typeof sdWeek === 'number' ? sdWeek : 4,
+            week: cachedCurrentWeek,
             source: 'sportsdata_io_current_week_api'
           });
         }
@@ -198,16 +210,45 @@ async function startServer() {
         console.warn('SportsData.io CurrentWeek fetch warning:', err?.message);
       }
     }
-    res.json({ week: 4, source: 'sportsdata_api_detected_week' });
+    res.json({ week: cachedCurrentWeek, source: 'sportsdata_api_detected_week' });
   });
 
   // SportsData.io Live NFL Scores Endpoint
   app.get(['/api/sportsdata/scores/live', '/api/scores/live'], async (req, res) => {
     const apiKey = (req.query.key as string) || process.env.SPORTSDATA_API_KEY;
-    const season = (req.query.season as string) || '2026REG';
-    const week = (req.query.week as string) || '4';
+    const season = (req.query.season as string) || cachedCurrentSeason || '2026REG';
+    const week = (req.query.week as string) || String(cachedCurrentWeek);
 
-    // 1. Try SportsData.io if API key is provided
+    // 1. First fetch real-time ESPN scoreboard to catch active games with live clock & situation
+    let espnGamesMap = new Map<string, any>();
+    try {
+      const espnRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+      if (espnRes.ok) {
+        const espnData = await espnRes.json();
+        if (Array.isArray(espnData.events)) {
+          espnData.events.forEach((evt: any) => {
+            const comp = evt.competitions?.[0] || {};
+            const competitors = comp.competitors || [];
+            const home = competitors.find((c: any) => c.homeAway === 'home') || {};
+            const away = competitors.find((c: any) => c.homeAway === 'away') || {};
+            const homeAbbr = (home.team?.abbreviation || '').toUpperCase();
+            const awayAbbr = (away.team?.abbreviation || '').toUpperCase();
+            if (homeAbbr && awayAbbr) {
+              espnGamesMap.set(`${awayAbbr}@${homeAbbr}`, {
+                evt,
+                comp,
+                home,
+                away
+              });
+            }
+          });
+        }
+      }
+    } catch (espnErr: any) {
+      console.warn('ESPN scoreboard fetch warning:', espnErr?.message);
+    }
+
+    // 2. Fetch official SportsData.io scores for this season & week
     if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
       try {
         const sdResponse = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/ScoresByWeek/${season}/${week}?key=${apiKey}`);
@@ -215,40 +256,103 @@ async function startServer() {
           const sdGames = await sdResponse.json();
           if (Array.isArray(sdGames) && sdGames.length > 0) {
             const formatted = sdGames.map((g: any, idx: number) => {
-              const isLive = g.IsInProgress || g.Status === 'InProgress';
-              const isFinal = g.IsOver || g.Status === 'Final';
+              const homeAbbr = (g.HomeTeam || '').toUpperCase();
+              const awayAbbr = (g.AwayTeam || '').toUpperCase();
+              const espnMatch = espnGamesMap.get(`${awayAbbr}@${homeAbbr}`);
+
+              let isLive = g.IsInProgress || g.Status === 'InProgress';
+              let isFinal = g.IsOver || g.Status === 'Final';
+              let quarter = g.Quarter || 'Pregame';
+              let displayClock = g.TimeRemaining || '0:00';
+              let clockSecs = 0;
+              let downDist = g.DownAndDistance || '';
+              let possession = g.Possession || '';
+              let isRedZone = Boolean(g.RedZone);
+              let homeScore = g.HomeScore ?? 0;
+              let awayScore = g.AwayScore ?? 0;
+              let statusDesc = isLive ? 'InProgress' : (isFinal ? 'Final' : (g.Status || 'Scheduled'));
+              let statusDetail = '';
+              let homeRecord = '0-0';
+              let awayRecord = '0-0';
+
+              if (espnMatch) {
+                const espnStatus = espnMatch.evt.status?.type?.description || '';
+                if (espnStatus === 'In Progress' || espnMatch.evt.status?.type?.state === 'in') {
+                  isLive = true;
+                  isFinal = false;
+                  statusDesc = 'InProgress';
+                  quarter = espnMatch.evt.status?.period ? `Q${espnMatch.evt.status.period}` : 'Q1';
+                  displayClock = espnMatch.evt.status?.displayClock || displayClock;
+                  statusDetail = espnMatch.evt.status?.type?.detail || `${quarter} ${displayClock}`;
+                  const clockParts = displayClock.split(':');
+                  clockSecs = clockParts.length === 2 
+                    ? (parseInt(clockParts[0], 10) || 0) * 60 + (parseInt(clockParts[1], 10) || 0)
+                    : 0;
+                  downDist = espnMatch.comp.situation?.downDistanceText || downDist;
+                  possession = espnMatch.comp.situation?.possessionText || possession;
+                  isRedZone = espnMatch.comp.situation?.isRedZone || (downDist.includes('at') && parseInt(downDist.split('at')[1]?.trim()?.split(' ')?.[1] || '50', 10) <= 20);
+                  homeScore = parseInt(espnMatch.home.score || '0', 10);
+                  awayScore = parseInt(espnMatch.away.score || '0', 10);
+                } else if (espnStatus === 'Final') {
+                  isFinal = true;
+                  isLive = false;
+                  statusDesc = 'Final';
+                  statusDetail = 'Final Score';
+                  homeScore = parseInt(espnMatch.home.score || String(homeScore), 10);
+                  awayScore = parseInt(espnMatch.away.score || String(awayScore), 10);
+                }
+                homeRecord = espnMatch.home.records?.[0]?.summary || '0-0';
+                awayRecord = espnMatch.away.records?.[0]?.summary || '0-0';
+              }
+
+              if (!statusDetail) {
+                if (isLive) {
+                  statusDetail = `${quarter} ${displayClock}`;
+                } else if (isFinal) {
+                  statusDetail = 'Final Score';
+                } else if (g.DateTime) {
+                  const d = new Date(g.DateTime);
+                  statusDetail = d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                } else {
+                  statusDetail = 'Scheduled';
+                }
+              }
+
+              const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === g.HomeTeam);
+              const awayTeamInfo = NFL_TEAMS.find((t) => t.Key === g.AwayTeam);
+
               return {
                 id: String(g.GameKey || g.ScoreID || `game-${idx}`),
                 gameKey: String(g.GameKey || `20261010${idx + 1}`),
                 name: `${g.AwayTeam} at ${g.HomeTeam}`,
                 shortName: `${g.AwayTeam} @ ${g.HomeTeam}`,
                 date: g.DateTime || g.Date || new Date().toISOString(),
-                status: isLive ? 'InProgress' : (isFinal ? 'Final' : (g.Status || 'Scheduled')),
-                statusDetail: isLive ? `${g.Quarter || 'Q4'} ${g.TimeRemaining || '2:15'}` : (isFinal ? 'Final Score' : (g.DateTime ? new Date(g.DateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Upcoming')),
-                quarter: g.Quarter || (isLive ? 'Q4' : (isFinal ? 'Final' : 'Pregame')),
-                clock: g.TimeRemaining || (isLive ? '2:15' : '0:00'),
-                clockSeconds: isLive ? 135 : 0,
-                playClock: isLive ? 22 : 0,
-                possession: g.Possession || (isLive ? g.HomeTeam : ''),
-                downDistance: g.DownAndDistance || (isLive ? '3rd & 4 at BAL 38' : ''),
-                isRedZone: g.RedZone || (isLive && idx === 0),
+                status: statusDesc,
+                statusDetail,
+                quarter,
+                clock: displayClock,
+                clockSeconds: clockSecs,
+                playClock: g.PlayClock ?? 25,
+                possession,
+                downDistance: downDist,
+                isRedZone,
                 homeTeam: {
                   id: g.HomeTeamID,
-                  name: g.HomeTeamName || g.HomeTeam,
+                  name: homeTeamInfo ? homeTeamInfo.FullName : (g.HomeTeamName || g.HomeTeam),
                   abbreviation: g.HomeTeam,
-                  score: g.HomeScore ?? 0,
-                  record: '3-0',
-                  color: '#3b82f6'
+                  score: homeScore,
+                  record: homeRecord,
+                  color: homeTeamInfo ? `#${homeTeamInfo.PrimaryColor}` : '#3b82f6'
                 },
                 awayTeam: {
                   id: g.AwayTeamID,
-                  name: g.AwayTeamName || g.AwayTeam,
+                  name: awayTeamInfo ? awayTeamInfo.FullName : (g.AwayTeamName || g.AwayTeam),
                   abbreviation: g.AwayTeam,
-                  score: g.AwayScore ?? 0,
-                  record: '2-1',
-                  color: '#ef4444'
+                  score: awayScore,
+                  record: awayRecord,
+                  color: awayTeamInfo ? `#${awayTeamInfo.PrimaryColor}` : '#ef4444'
                 },
-                venue: `${g.StadiumDetails?.Name || g.StadiumName || 'NFL Stadium'}, ${g.StadiumDetails?.City || g.StadiumCity || 'City'}`,
+                venue: `${g.StadiumDetails?.Name || g.StadiumName || 'NFL Stadium'}, ${g.StadiumDetails?.City || g.StadiumCity || ''}`,
                 broadcast: g.Channel || 'NBC',
                 odds: {
                   spread: g.PointSpread ? `${g.PointSpread > 0 ? '+' : ''}${g.PointSpread}` : '-3.5',
@@ -257,10 +361,18 @@ async function startServer() {
               };
             });
 
+            // Sort strictly chronologically starting at the first game of the week
+            formatted.sort((a: any, b: any) => {
+              return new Date(a.date).getTime() - new Date(b.date).getTime();
+            });
+
+            const hasLiveGames = formatted.some((g: any) => g.status === 'InProgress');
+
             return res.json({
               source: 'sportsdata_io_live',
               season,
               week,
+              hasLiveGames,
               timestamp: new Date().toISOString(),
               games: formatted
             });
@@ -271,7 +383,7 @@ async function startServer() {
       }
     }
 
-    // 2. Try ESPN Real-Time NFL Live scoreboard as high-fidelity fallback
+    // 3. Try ESPN Real-Time NFL Live scoreboard as fallback
     try {
       const espnRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
       if (espnRes.ok) {
@@ -284,15 +396,15 @@ async function startServer() {
             const away = competitors.find((c: any) => c.homeAway === 'away') || {};
 
             const statusDesc = evt.status?.type?.description || 'Scheduled';
-            const isLive = statusDesc === 'In Progress' || statusDesc === 'InProgress' || evt.status?.type?.state === 'in' || idx === 0;
-            const displayClock = evt.status?.displayClock || (isLive ? '02:15' : '0:00');
+            const isLive = statusDesc === 'In Progress' || statusDesc === 'InProgress' || evt.status?.type?.state === 'in';
+            const displayClock = evt.status?.displayClock || '0:00';
             const clockParts = displayClock.split(':');
             const clockSecs = clockParts.length === 2 
               ? (parseInt(clockParts[0], 10) || 0) * 60 + (parseInt(clockParts[1], 10) || 0)
-              : (isLive ? 135 : 0);
+              : 0;
 
-            const downDist = comp.situation?.downDistanceText || (isLive ? '3rd & 4 at BAL 38' : '');
-            const isRedZone = comp.situation?.isRedZone || downDist.includes('at') && parseInt(downDist.split('at')[1]?.trim()?.split(' ')?.[1] || '50', 10) <= 20 || (isLive && idx === 0);
+            const downDist = comp.situation?.downDistanceText || '';
+            const isRedZone = comp.situation?.isRedZone || (downDist.includes('at') && parseInt(downDist.split('at')[1]?.trim()?.split(' ')?.[1] || '50', 10) <= 20);
 
             return {
               id: evt.id || `game-${idx}`,
@@ -301,33 +413,33 @@ async function startServer() {
               shortName: evt.shortName || `${away.team?.abbreviation || 'AWY'} @ ${home.team?.abbreviation || 'HOM'}`,
               date: evt.date || new Date().toISOString(),
               status: isLive ? 'InProgress' : (statusDesc === 'Final' ? 'Final' : 'Scheduled'),
-              statusDetail: isLive ? `${evt.status?.period ? `Q${evt.status.period}` : 'Q4'} ${displayClock}` : (statusDesc === 'Final' ? 'Final' : 'Upcoming'),
-              quarter: evt.status?.period ? `Q${evt.status.period}` : (isLive ? 'Q4' : 'Final'),
+              statusDetail: evt.status?.type?.detail || (isLive ? `${evt.status?.period ? `Q${evt.status.period}` : 'Q1'} ${displayClock}` : (statusDesc === 'Final' ? 'Final' : 'Upcoming')),
+              quarter: evt.status?.period ? `Q${evt.status.period}` : (isLive ? 'Q1' : 'Pregame'),
               clock: displayClock,
               clockSeconds: clockSecs,
               playClock: comp.situation?.playClock || 24,
-              possession: comp.situation?.possessionText || (home.team?.abbreviation || 'KC'),
+              possession: comp.situation?.possessionText || '',
               downDistance: downDist,
               isRedZone,
               homeTeam: {
                 id: home.team?.id,
-                name: home.team?.displayName || home.team?.name || 'Chiefs',
-                abbreviation: home.team?.abbreviation || 'KC',
+                name: home.team?.displayName || home.team?.name || 'Home',
+                abbreviation: home.team?.abbreviation || 'HOM',
                 logo: home.team?.logo,
                 color: home.team?.color ? `#${home.team.color}` : '#3b82f6',
-                score: parseInt(home.score || (idx === 0 ? '27' : '21'), 10),
-                record: home.records?.[0]?.summary || '3-0'
+                score: parseInt(home.score || '0', 10),
+                record: home.records?.[0]?.summary || '0-0'
               },
               awayTeam: {
                 id: away.team?.id,
-                name: away.team?.displayName || away.team?.name || 'Ravens',
-                abbreviation: away.team?.abbreviation || 'BAL',
+                name: away.team?.displayName || away.team?.name || 'Away',
+                abbreviation: away.team?.abbreviation || 'AWY',
                 logo: away.team?.logo,
                 color: away.team?.color ? `#${away.team.color}` : '#ef4444',
-                score: parseInt(away.score || (idx === 0 ? '24' : '14'), 10),
-                record: away.records?.[0]?.summary || '2-1'
+                score: parseInt(away.score || '0', 10),
+                record: away.records?.[0]?.summary || '0-0'
               },
-              venue: comp.venue?.fullName || 'Arrowhead Stadium, Kansas City',
+              venue: comp.venue?.fullName || 'NFL Stadium',
               broadcast: comp.broadcasts?.[0]?.names?.[0] || 'NBC',
               odds: {
                 spread: comp.odds?.[0]?.details || '-3.5',
@@ -336,10 +448,18 @@ async function startServer() {
             };
           });
 
+          // Sort strictly chronologically starting at the first game of the week
+          events.sort((a: any, b: any) => {
+            return new Date(a.date).getTime() - new Date(b.date).getTime();
+          });
+
+          const hasLiveGames = events.some((g: any) => g.status === 'InProgress');
+
           return res.json({
             source: 'espn_realtime_feed',
             season: 2026,
-            week: 4,
+            week: 1,
+            hasLiveGames,
             timestamp: new Date().toISOString(),
             games: events
           });
@@ -349,8 +469,19 @@ async function startServer() {
       console.warn('ESPN real-time fetch error:', espnErr?.message);
     }
 
-    // 3. Fallback: Formatted SportsData schedule
-    const mockFormatted = SCHEDULES_DATA.map((g, idx) => {
+    // 4. Fallback: Formatted SportsData schedule strictly for THIS WEEK'S GAMES
+    const targetWeekNum = parseInt(String(week), 10) || 1;
+    const thisWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === targetWeekNum);
+    const weekSchedulesToUse = thisWeekSchedules.length > 0 ? thisWeekSchedules : SCHEDULES_DATA.filter((g) => g.Week === 1);
+
+    // Sort strictly chronologically starting at the first game of the week
+    weekSchedulesToUse.sort((a, b) => {
+      const dateA = new Date(`${a.Date}T${a.Time || '13:00'}:00`).getTime();
+      const dateB = new Date(`${b.Date}T${b.Time || '13:00'}:00`).getTime();
+      return dateA - dateB;
+    });
+
+    const mockFormatted = weekSchedulesToUse.map((g, idx) => {
       const isLive = g.Status === 'InProgress';
       const isFinal = g.Status === 'Final';
       const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === g.HomeTeam);
@@ -361,7 +492,7 @@ async function startServer() {
         gameKey: g.GameKey,
         name: `${awayTeamInfo ? awayTeamInfo.FullName : g.AwayTeam} at ${homeTeamInfo ? homeTeamInfo.FullName : g.HomeTeam}`,
         shortName: `${g.AwayTeam} @ ${g.HomeTeam}`,
-        date: g.Date || new Date().toISOString(),
+        date: g.Date ? `${g.Date}T${g.Time || '13:00'}:00` : new Date().toISOString(),
         status: isLive ? 'InProgress' : (isFinal ? 'Final' : 'Scheduled'),
         statusDetail: isLive
           ? `${g.Quarter || 'Q4'} ${g.TimeRemaining || '02:15'}`
@@ -377,14 +508,14 @@ async function startServer() {
           name: homeTeamInfo ? homeTeamInfo.FullName : g.HomeTeam,
           abbreviation: g.HomeTeam,
           score: g.HomeScore ?? 0,
-          record: '3-0',
+          record: '0-0',
           color: homeTeamInfo ? `#${homeTeamInfo.PrimaryColor}` : '#3b82f6'
         },
         awayTeam: {
           name: awayTeamInfo ? awayTeamInfo.FullName : g.AwayTeam,
           abbreviation: g.AwayTeam,
           score: g.AwayScore ?? 0,
-          record: '2-1',
+          record: '0-0',
           color: awayTeamInfo ? `#${awayTeamInfo.PrimaryColor}` : '#ef4444'
         },
         venue: `${g.StadiumName || 'NFL Stadium'}, ${g.StadiumCity || 'City'}`,
@@ -396,10 +527,13 @@ async function startServer() {
       };
     });
 
+    const hasLiveGames = mockFormatted.some((g) => g.status === 'InProgress');
+
     res.json({
       source: 'sportsdata_cache',
       season,
-      week,
+      week: targetWeekNum,
+      hasLiveGames,
       timestamp: new Date().toISOString(),
       games: mockFormatted
     });
@@ -489,38 +623,77 @@ async function startServer() {
   // SportsData API proxy or mock data provider
   app.get('/api/sportsdata/standings', async (req, res) => {
     const apiKey = process.env.SPORTSDATA_API_KEY;
-    const season = (req.query.season as string) || '2026REG';
+    const season = (req.query.season as string) || cachedCurrentSeason || '2026REG';
 
-    if (apiKey) {
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
       try {
-        const response = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Standings/${season}?key=${apiKey}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data) && data.length > 0) {
-            const normalizedData = data.map((item: any) => {
-              let streakStr = item.StreakDescription;
-              if (!streakStr) {
-                if (typeof item.Streak === 'number') {
-                  streakStr = item.Streak > 0 ? `W${item.Streak}` : item.Streak < 0 ? `L${Math.abs(item.Streak)}` : '0';
-                } else if (item.Streak) {
-                  streakStr = String(item.Streak);
-                } else {
-                  streakStr = '-';
-                }
-              }
-              return {
+        if (cachedStandingsMap[season]) {
+          return res.json({
+            source: 'sportsdata_live_api',
+            season,
+            timestamp: new Date().toISOString(),
+            data: cachedStandingsMap[season]
+          });
+        }
+
+        // Try requesting target season
+        let targetEndpoint = `https://api.sportsdata.io/v3/nfl/scores/json/Standings/${season}?key=${apiKey}`;
+        let response = await fetch(targetEndpoint);
+        let data = response.ok ? await response.json() : [];
+
+        // If 2026REG has not concluded any games yet (0 items), check 2026PRE or initialize 32 real teams
+        if ((!Array.isArray(data) || data.length === 0) && (season === '2026REG' || season === '2026')) {
+          // Attempt 2026PRE to get recent 2026 team baseline or construct 32 teams from official roster
+          const preRes = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Standings/2026PRE?key=${apiKey}`);
+          if (preRes.ok) {
+            const preData = await preRes.json();
+            if (Array.isArray(preData) && preData.length > 0) {
+              data = preData.map((item: any) => ({
                 ...item,
-                PointDifferential: item.PointDifferential ?? (item.NetPoints ?? ((item.PointsFor || 0) - (item.PointsAgainst || 0))),
-                Streak: streakStr
-              };
-            });
-            return res.json({
-              source: 'sportsdata_live_api',
-              season,
-              timestamp: new Date().toISOString(),
-              data: normalizedData
-            });
+                Season: 2026,
+                SeasonType: 1,
+                Wins: 0,
+                Losses: 0,
+                Ties: 0,
+                Percentage: 0.0,
+                PointsFor: 0,
+                PointsAgainst: 0,
+                PointDifferential: 0,
+                NetPoints: 0,
+                Streak: '-',
+                StreakDescription: '-'
+              }));
+            }
           }
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const normalizedData = data.map((item: any) => {
+            let streakStr = item.StreakDescription;
+            if (!streakStr) {
+              if (typeof item.Streak === 'number') {
+                streakStr = item.Streak > 0 ? `W${item.Streak}` : item.Streak < 0 ? `L${Math.abs(item.Streak)}` : '0';
+              } else if (item.Streak) {
+                streakStr = String(item.Streak);
+              } else {
+                streakStr = '-';
+              }
+            }
+            return {
+              ...item,
+              PointDifferential: item.PointDifferential ?? (item.NetPoints ?? ((item.PointsFor || 0) - (item.PointsAgainst || 0))),
+              Streak: streakStr
+            };
+          });
+
+          cachedStandingsMap[season] = normalizedData;
+
+          return res.json({
+            source: 'sportsdata_live_api',
+            season,
+            timestamp: new Date().toISOString(),
+            data: normalizedData
+          });
         }
       } catch (err: any) {
         console.error('Failed to proxy SportsData Standings API:', err?.message);
@@ -535,21 +708,60 @@ async function startServer() {
     });
   });
 
-  app.get('/api/sportsdata/teams', (req, res) => {
+  app.get('/api/sportsdata/teams', async (req, res) => {
+    const apiKey = process.env.SPORTSDATA_API_KEY;
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
+      try {
+        if (cachedTeams && cachedTeams.length > 0) {
+          return res.json(cachedTeams);
+        }
+        const resp = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Teams?key=${apiKey}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data) && data.length > 0) {
+            cachedTeams = data;
+            return res.json(data);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Teams live proxy warning:', err?.message);
+      }
+    }
     res.json(NFL_TEAMS);
   });
 
-  app.get('/api/sportsdata/players', (req, res) => {
+  app.get('/api/sportsdata/players', async (req, res) => {
+    const apiKey = process.env.SPORTSDATA_API_KEY;
+    const teamKey = req.query.team as string;
+
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY' && teamKey) {
+      try {
+        if (cachedPlayersMap[teamKey]) {
+          return res.json(cachedPlayersMap[teamKey]);
+        }
+        const resp = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Players/${encodeURIComponent(teamKey)}?key=${apiKey}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data) && data.length > 0) {
+            cachedPlayersMap[teamKey] = data;
+            return res.json(data);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Players live proxy warning:', err?.message);
+      }
+    }
     res.json(PLAYERS_DATA);
   });
 
   app.get('/api/sportsdata/schedules', async (req, res) => {
     const apiKey = process.env.SPORTSDATA_API_KEY;
-    const season = (req.query.season as string) || '2026REG';
+    const season = (req.query.season as string) || cachedCurrentSeason || '2026REG';
 
-    if (apiKey) {
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
       try {
-        const response = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Schedules/${season}?key=${apiKey}`);
+        const querySeason = season.includes('REG') || season.includes('PRE') || season.includes('POST') ? season.substring(0, 4) : season;
+        const response = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/Schedules/${querySeason}?key=${apiKey}`);
         if (response.ok) {
           const data = await response.json();
           return res.json({
@@ -574,7 +786,25 @@ async function startServer() {
     res.json(PLAY_BY_PLAY_EVENTS);
   });
 
-  app.get('/api/sportsdata/depth', (req, res) => {
+  app.get('/api/sportsdata/depth', async (req, res) => {
+    const apiKey = process.env.SPORTSDATA_API_KEY;
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
+      try {
+        if (cachedDepthCharts && cachedDepthCharts.length > 0) {
+          return res.json(cachedDepthCharts);
+        }
+        const resp = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/DepthCharts?key=${apiKey}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data) && data.length > 0) {
+            cachedDepthCharts = data;
+            return res.json(data);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Depth charts live proxy warning:', err?.message);
+      }
+    }
     res.json(DEPTH_CHARTS);
   });
 
@@ -584,8 +814,8 @@ async function startServer() {
 
   app.get('/api/sportsdata/odds', async (req, res) => {
     const apiKey = process.env.SPORTSDATA_API_KEY;
-    const season = (req.query.season as string) || '2026REG';
-    const week = (req.query.week as string) || '1';
+    const season = (req.query.season as string) || cachedCurrentSeason || '2026REG';
+    const week = (req.query.week as string) || String(cachedCurrentWeek);
 
     if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
       try {
@@ -612,7 +842,25 @@ async function startServer() {
     res.json(FANTASY_DFS_PLAYERS);
   });
 
-  app.get('/api/sportsdata/news', (req, res) => {
+  app.get('/api/sportsdata/news', async (req, res) => {
+    const apiKey = process.env.SPORTSDATA_API_KEY;
+    if (apiKey && apiKey !== 'MY_SPORTSDATA_KEY') {
+      try {
+        if (cachedNews && cachedNews.length > 0) {
+          return res.json({ articles: cachedNews, transactions: TRANSACTIONS_DATA });
+        }
+        const resp = await fetch(`https://api.sportsdata.io/v3/nfl/scores/json/News?key=${apiKey}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data) && data.length > 0) {
+            cachedNews = data;
+            return res.json({ articles: data, transactions: TRANSACTIONS_DATA });
+          }
+        }
+      } catch (err: any) {
+        console.warn('News live proxy warning:', err?.message);
+      }
+    }
     res.json({ articles: NEWS_ARTICLES, transactions: TRANSACTIONS_DATA });
   });
 
