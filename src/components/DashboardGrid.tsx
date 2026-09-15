@@ -18,6 +18,7 @@ import { NewsTransactionsView } from './views/NewsTransactionsView';
 import { DbViewerView } from './views/DbViewerView';
 import { UserAccountView } from './views/UserAccountView';
 import { ServerAdminView } from './views/ServerAdminView';
+import { AlertsCenterView } from './views/AlertsCenterView';
 import {
   DEFAULT_WIDGET_CONFIGS,
   reorderWidgets,
@@ -296,6 +297,14 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         return <UserAccountView selectedSeason={selectedSeason} onNavigateToView={onViewChange} />;
       case 'admin':
         return <ServerAdminView selectedSeason={selectedSeason} />;
+      case 'alerts':
+        return (
+          <AlertsCenterView
+            selectedSeason={selectedSeason}
+            onSeasonChange={onSeasonChange}
+            onNavigateToPlayByPlay={handleGameSelectAndNavigate}
+          />
+        );
       default:
         return (
           <ScoreboardLiveView
@@ -403,6 +412,14 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         return <UserAccountView selectedSeason={selectedSeason} onNavigateToView={onViewChange} />;
       case 'admin':
         return <ServerAdminView selectedSeason={selectedSeason} />;
+      case 'alerts':
+        return (
+          <AlertsCenterView
+            selectedSeason={selectedSeason}
+            onSeasonChange={onSeasonChange}
+            onNavigateToPlayByPlay={handleGameSelectAndNavigate}
+          />
+        );
       default:
         return null;
     }

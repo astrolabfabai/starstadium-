@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useScoringNotifications } from '../../context/ScoringNotificationContext';
 import { ScoreType, ScoringDriveAlert } from '../../types';
+import { ScoringAlertSettings } from './ScoringAlertSettings';
 import {
   Bell,
   BellOff,
@@ -27,11 +28,13 @@ import {
 interface ScoringNotificationCenterModalProps {
   onSelectGame?: (gameKey: string) => void;
   onOpenAiWithPrompt?: (prompt: string, context?: any) => void;
+  onNavigateToAlertsHub?: () => void;
 }
 
 export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterModalProps> = ({
   onSelectGame,
-  onOpenAiWithPrompt
+  onOpenAiWithPrompt,
+  onNavigateToAlertsHub
 }) => {
   const {
     alerts,
@@ -39,6 +42,7 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
     isSoundEnabled,
     isNotificationsEnabled,
     isAutoSimulationActive,
+    cookieMeta,
     setIsSoundEnabled,
     setIsNotificationsEnabled,
     setIsAutoSimulationActive,
@@ -49,7 +53,7 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
     setIsNotificationCenterOpen
   } = useScoringNotifications();
 
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'TD' | 'FG' | 'DEF' | 'REDZONE'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'TD' | 'FG' | 'DEF' | 'REDZONE' | 'SETTINGS'>('ALL');
 
   if (!isNotificationCenterOpen) return null;
 
@@ -229,7 +233,8 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
             { id: 'TD', label: '⚡ Touchdowns' },
             { id: 'FG', label: '🎯 Field Goals' },
             { id: 'REDZONE', label: '🚩 Red Zone' },
-            { id: 'DEF', label: '🛡️ Defensive' }
+            { id: 'DEF', label: '🛡️ Defensive' },
+            { id: 'SETTINGS', label: '⚙️ Cookie & Settings' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -246,7 +251,7 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
         </div>
 
         {/* Off State Info Banner */}
-        {!isNotificationsEnabled && (
+        {activeFilter !== 'SETTINGS' && !isNotificationsEnabled && (
           <div className="mx-4 mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-rose-200 font-medium">
               <BellOff className="w-4 h-4 text-rose-400 shrink-0" />
@@ -261,8 +266,19 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
           </div>
         )}
 
-        {/* Alert List Timeline */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+        {/* Modal Body: Settings Tab OR Alert Feed */}
+        {activeFilter === 'SETTINGS' ? (
+          <div className="flex-1 overflow-y-auto p-4">
+            <ScoringAlertSettings
+              variant="compact"
+              showCookieDetails={true}
+              showTestButton={true}
+              showResetButton={true}
+            />
+          </div>
+        ) : (
+          /* Alert List Timeline */
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {filteredAlerts.length === 0 ? (
             <div className="py-16 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 mx-auto flex items-center justify-center text-slate-500">
@@ -382,9 +398,10 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
             ))
           )}
         </div>
+        )}
 
         {/* Drawer Footer */}
-        <div className="p-4 border-t border-white/10 bg-[#121216] flex items-center justify-between">
+        <div className="p-4 border-t border-white/10 bg-[#121216] flex items-center justify-between gap-3">
           <button
             onClick={clearAlertHistory}
             disabled={alerts.length === 0}
@@ -394,9 +411,23 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
             <span>Clear Log</span>
           </button>
 
-          <span className="text-[11px] text-slate-400 font-mono">
-            {alerts.length} drive alerts logged
-          </span>
+          <div className="flex items-center gap-2">
+            {onNavigateToAlertsHub && (
+              <button
+                onClick={() => {
+                  setIsNotificationCenterOpen(false);
+                  onNavigateToAlertsHub();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition shadow-sm"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Open Alerts Hub</span>
+              </button>
+            )}
+            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+              {alerts.length} logged
+            </span>
+          </div>
         </div>
       </div>
     </div>

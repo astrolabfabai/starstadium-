@@ -385,10 +385,44 @@ const TEAM_KEY_ALIASES: Record<string, string> = {
 
 /**
  * Normalizes any team key, abbreviation, city, or mascot name into the standard 2-3 char key.
+ * Bulletproof against objects (e.g. { abbreviation: 'KC', name: 'Chiefs' }), null/undefined, or numbers.
  */
-export function normalizeTeamKey(rawInput?: string): string {
+export function normalizeTeamKey(rawInput?: any): string {
   if (!rawInput) return 'NFL';
-  const clean = rawInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  let str = '';
+  if (typeof rawInput === 'string') {
+    str = rawInput;
+  } else if (typeof rawInput === 'object' && rawInput !== null) {
+    // Handle team objects passed directly from component states or API feeds
+    str =
+      rawInput.abbreviation ||
+      rawInput.abbr ||
+      rawInput.Key ||
+      rawInput.key ||
+      rawInput.teamKey ||
+      rawInput.name ||
+      rawInput.fullName ||
+      rawInput.FullName ||
+      rawInput.team ||
+      rawInput.Team ||
+      '';
+    if (!str && typeof rawInput.toString === 'function') {
+      const s = rawInput.toString();
+      if (s && s !== '[object Object]') {
+        str = s;
+      }
+    }
+  } else {
+    str = String(rawInput);
+  }
+
+  if (!str || typeof str !== 'string' || typeof str.trim !== 'function') {
+    return 'NFL';
+  }
+
+  const clean = str.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!clean) return 'NFL';
 
   if (NFL_TEAM_IDENTITIES[clean]) {
     return clean;
@@ -412,7 +446,7 @@ export function normalizeTeamKey(rawInput?: string): string {
 /**
  * Returns the official high-resolution transparent logo URL for any team.
  */
-export function getTeamLogoUrl(teamKeyOrName?: string, customFallbackUrl?: string): string {
+export function getTeamLogoUrl(teamKeyOrName?: any, customFallbackUrl?: string): string {
   if (customFallbackUrl && (customFallbackUrl.startsWith('http') || customFallbackUrl.startsWith('/'))) {
     return customFallbackUrl;
   }
@@ -435,7 +469,7 @@ export function getTeamLogoUrl(teamKeyOrName?: string, customFallbackUrl?: strin
 /**
  * Returns the primary brand color for a team.
  */
-export function getTeamColor(teamKeyOrName?: string, defaultFallback = '#3b82f6'): string {
+export function getTeamColor(teamKeyOrName?: any, defaultFallback = '#3b82f6'): string {
   const normalized = normalizeTeamKey(teamKeyOrName);
   return NFL_TEAM_IDENTITIES[normalized]?.primaryColor || defaultFallback;
 }
@@ -443,7 +477,9 @@ export function getTeamColor(teamKeyOrName?: string, defaultFallback = '#3b82f6'
 /**
  * Returns the full team identity object.
  */
-export function getTeamIdentity(teamKeyOrName?: string): TeamIdentity | null {
+export function getTeamIdentity(teamKeyOrName?: any): TeamIdentity | null {
   const normalized = normalizeTeamKey(teamKeyOrName);
   return NFL_TEAM_IDENTITIES[normalized] || null;
 }
+
+export { NFL_TEAM_SVG_LOGOS, resolveTeamSvgLogo } from '../data/teamSvgLogos';

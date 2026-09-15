@@ -19,6 +19,9 @@ import { GridironTacticalCanvas } from '../football/GridironTacticalCanvas';
 import { WinProbabilityChart } from '../football/WinProbabilityChart';
 import { TeamLogo } from '../TeamLogo';
 import { exportPlayAnimationsAsHtml, exportPlayAnimationsAsJson, exportCoachingReport } from '../../utils/playAnimationsExporter';
+import { MOCK_HIGHLIGHT_VIDEOS } from '../../data/highlightVideosData';
+import { HighlightVideoItem } from '../../types';
+import { YouTubePlayerModal } from '../video/YouTubePlayerModal';
 import {
   Activity,
   Play,
@@ -42,7 +45,9 @@ import {
   FileCode,
   FileText,
   Sliders,
-  Filter
+  Filter,
+  Tv,
+  Youtube
 } from 'lucide-react';
 
 const PLAY_TYPE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -98,6 +103,7 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isFilmRoomModalOpen, setIsFilmRoomModalOpen] = useState<boolean>(false);
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
+  const [activeVideoModal, setActiveVideoModal] = useState<HighlightVideoItem | null>(null);
 
   // Selected game - checks gamesForSeason first, then full SCHEDULES_DATA
   const activeGame =
@@ -272,6 +278,37 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
               )}
             </div>
 
+            {/* Quick YouTube Preview / Highlights launch */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const previewVid = MOCK_HIGHLIGHT_VIDEOS.find(
+                    (v) => v.gameKey === activeGame.GameKey && (v.category === 'PREVIEW' || v.videoType === 'PREVIEW')
+                  ) || MOCK_HIGHLIGHT_VIDEOS[0];
+                  setActiveVideoModal(previewVid);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-mono font-bold transition"
+                title="Watch Game Preview on YouTube"
+              >
+                <Tv className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Preview</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const hlVid = MOCK_HIGHLIGHT_VIDEOS.find(
+                    (v) => v.gameKey === activeGame.GameKey && (v.category === 'HIGHLIGHTS' || v.videoType === 'HIGHLIGHTS')
+                  ) || MOCK_HIGHLIGHT_VIDEOS[1];
+                  setActiveVideoModal(hlVid);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold transition"
+                title="Watch Game Highlights on YouTube"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span className="hidden sm:inline">Highlights</span>
+              </button>
+            </div>
+
             {/* Film Room Full-Screen Button */}
             <button
               onClick={() => setIsFilmRoomModalOpen(true)}
@@ -299,10 +336,11 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
                   All ({gamesForSeason.length})
                 </button>
                 <button
-                  onClick={() => setGameStatusFilter('LIVE')}
-                  className={`px-2 py-0.5 rounded flex items-center gap-1 ${gameStatusFilter === 'LIVE' ? 'bg-rose-500/30 text-rose-300 font-bold' : 'text-slate-400'}`}
+                  onClick={() => setGameStatusFilter((prev) => prev === 'LIVE' ? 'ALL' : 'LIVE')}
+                  className="px-2 py-0.5 rounded flex items-center gap-1 bg-rose-500/30 text-rose-300 font-bold border border-rose-500/40 shadow-xs"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span> Live
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                  <span>LIVE</span>
                 </button>
                 <button
                   onClick={() => setGameStatusFilter('FINAL')}
@@ -533,48 +571,52 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
               isAnimating={isRoutesAnimating}
               selectedNodeId={selectedNodeId}
               onSelectNode={setSelectedNodeId}
+              teamHome={activeGame.HomeTeam}
+              teamAway={activeGame.AwayTeam}
             />
           </div>
 
           {/* ACTIVE PLAY TELEMETRY BAR */}
-          <div className="bg-[#09090b] border border-white/10 rounded-2xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-2.5">
-              <div className="flex items-center gap-2">
-                <TeamLogo teamKey={activePlay.Possession} size="sm" shape="circle" />
-                <span className="text-xs font-mono font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  {activePlay.Possession} &bull; Q{activePlay.Quarter} &bull; {activePlay.TimeRemaining}
-                </span>
-                <span className="text-xs font-mono font-bold text-white">
-                  {activePlay.Down === 1 ? '1st' : activePlay.Down === 2 ? '2nd' : activePlay.Down === 3 ? '3rd' : '4th'} &amp; {activePlay.Distance} at {activePlay.YardLineSide} {activePlay.YardLine}
-                </span>
+          {activePlay && (
+            <div className="bg-[#09090b] border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <TeamLogo teamKey={activePlay.Possession} size="sm" shape="circle" />
+                  <span className="text-xs font-mono font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {activePlay.Possession} &bull; Q{activePlay.Quarter} &bull; {activePlay.TimeRemaining}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-white">
+                    {activePlay.Down === 1 ? '1st' : activePlay.Down === 2 ? '2nd' : activePlay.Down === 3 ? '3rd' : '4th'} &amp; {activePlay.Distance} at {activePlay.YardLineSide} {activePlay.YardLine}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-mono">
+                  <span className="text-slate-400">
+                    EPA: <strong className={activePlay.epa && activePlay.epa > 0 ? 'text-emerald-400' : 'text-rose-400'}>{activePlay.epa ? `${activePlay.epa > 0 ? '+' : ''}${activePlay.epa}` : '0.00'}</strong>
+                  </span>
+                  <span className="text-slate-400">
+                    Win Prob: <strong className="text-amber-400">{activePlay.WinProbabilityPct || 50}%</strong>
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 text-xs font-mono">
-                <span className="text-slate-400">
-                  EPA: <strong className={activePlay.epa && activePlay.epa > 0 ? 'text-emerald-400' : 'text-rose-400'}>{activePlay.epa ? `${activePlay.epa > 0 ? '+' : ''}${activePlay.epa}` : '0.00'}</strong>
+
+              <p className="text-sm font-semibold text-white leading-relaxed">
+                {activePlay.Description}
+              </p>
+
+              {/* Scheme & Coverage Badges */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-amber-300 border border-amber-500/20">
+                  📐 Concept: <strong>{activePlay.playConceptName || activePlayConcept.name}</strong>
                 </span>
-                <span className="text-slate-400">
-                  Win Prob: <strong className="text-amber-400">{activePlay.WinProbabilityPct}%</strong>
+                <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-sky-300 border border-sky-500/20">
+                  🛡️ Coverage: <strong>{activePlay.defensiveCoverage || activePlayConcept.defensiveCoverage}</strong>
+                </span>
+                <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-emerald-300 border border-emerald-500/20">
+                  👥 Personnel: <strong>{activePlay.formation || activePlayConcept.personnel}</strong>
                 </span>
               </div>
             </div>
-
-            <p className="text-sm font-semibold text-white leading-relaxed">
-              {activePlay.Description}
-            </p>
-
-            {/* Scheme & Coverage Badges */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-amber-300 border border-amber-500/20">
-                📐 Concept: <strong>{activePlay.playConceptName || activePlayConcept.name}</strong>
-              </span>
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-sky-300 border border-sky-500/20">
-                🛡️ Coverage: <strong>{activePlay.defensiveCoverage || activePlayConcept.defensiveCoverage}</strong>
-              </span>
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#151518] text-emerald-300 border border-emerald-500/20">
-                👥 Personnel: <strong>{activePlay.formation || activePlayConcept.personnel}</strong>
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Dynamic Win Probability Shift Line Chart */}
           <div className="mt-4">
@@ -689,9 +731,12 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <GridironTacticalCanvas
                 playConcept={activePlayConcept}
+                playEvent={activePlay}
                 isAnimating={true}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={setSelectedNodeId}
+                teamHome={activeGame.HomeTeam}
+                teamAway={activeGame.AwayTeam}
                 zoom={1.1}
               />
               <div className="bg-[#09090b] p-4 rounded-xl border border-white/10 text-sm text-white">
@@ -700,6 +745,16 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Embedded YouTube IFrame Modal */}
+      {activeVideoModal && (
+        <YouTubePlayerModal
+          video={activeVideoModal}
+          onClose={() => setActiveVideoModal(null)}
+          onSwitchVideo={(newVid) => setActiveVideoModal(newVid)}
+          availableVideos={MOCK_HIGHLIGHT_VIDEOS}
+        />
       )}
     </div>
   );

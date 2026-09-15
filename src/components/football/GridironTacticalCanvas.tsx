@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FootballPlayConcept, FootballPlayerNode, PlayByPlayEvent } from '../../types';
 import { Play, Pause, RotateCcw, Target, Shield, Zap, Sparkles, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { getTeamIdentity, getTeamLogoUrl, normalizeTeamKey, resolveTeamSvgLogo, NFL_TEAM_SVG_LOGOS } from '../../utils/teamUtils';
+import { SCHEDULES_DATA } from '../../data/sportsDataMock';
 
 interface GridironTacticalCanvasProps {
   playConcept: FootballPlayConcept;
@@ -15,9 +17,18 @@ interface GridironTacticalCanvasProps {
   showCoachingNotes?: boolean;
   showPlayMetadata?: boolean;
   aspectRatioClass?: string;
-  teamHome?: string;
-  teamAway?: string;
+  teamHome?: any;
+  teamAway?: any;
   animationSpeed?: number;
+  zoom?: number;
+  /**
+   * Dynamic SVG logo prop-mappings for teams.
+   * Key can be team abbreviation (e.g. 'KC', 'BAL'), mascot, or city name.
+   */
+  teamSvgLogos?: Record<string, string>;
+  teamLogoMap?: Record<string, string>;
+  svgLogoMappings?: Record<string, string>;
+  teamLogos?: Record<string, string>;
 }
 
 export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
@@ -35,7 +46,12 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
   aspectRatioClass = 'aspect-[16/9] min-h-[360px] sm:min-h-[460px]',
   teamHome = 'KC',
   teamAway = 'BAL',
-  animationSpeed = 1
+  animationSpeed = 1,
+  zoom = 1,
+  teamSvgLogos,
+  teamLogoMap,
+  svgLogoMappings,
+  teamLogos
 }) => {
   const [internalSelectedNode, setInternalSelectedNode] = useState<string | null>(selectedNodeId);
   const [ballProgress, setBallProgress] = useState<number>(0);
@@ -76,6 +92,71 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
     playConcept.offensiveNodes[0];
 
   const qbNode = playConcept.offensiveNodes.find((n) => n.role === 'QB') || playConcept.offensiveNodes[0];
+
+  // Dynamically resolve home & away team from props or active play/game context
+  const extractTeamKeyOrName = (input?: any): string => {
+    if (!input) return '';
+    if (typeof input === 'string') return input;
+    if (typeof input === 'object' && input !== null) {
+      return (
+        input.abbreviation ||
+        input.abbr ||
+        input.Key ||
+        input.key ||
+        input.teamKey ||
+        input.name ||
+        input.fullName ||
+        ''
+      );
+    }
+    return String(input);
+  };
+
+  const matchedGame = playEvent?.GameKey
+    ? SCHEDULES_DATA.find((g) => g.GameKey === playEvent.GameKey)
+    : (playEvent?.GameID ? SCHEDULES_DATA.find((g) => g.GameKey === String(playEvent.GameID)) : null);
+
+  const rawHomeInput = extractTeamKeyOrName(teamHome);
+  const rawAwayInput = extractTeamKeyOrName(teamAway);
+
+  const effectiveHome = normalizeTeamKey(
+    rawHomeInput || matchedGame?.HomeTeam || (playEvent?.YardLineSide ? extractTeamKeyOrName(playEvent.YardLineSide) : 'KC')
+  );
+  const effectiveAway = normalizeTeamKey(
+    rawAwayInput || matchedGame?.AwayTeam || 'BAL'
+  );
+
+  const homeIdentity = getTeamIdentity(effectiveHome);
+  const awayIdentity = getTeamIdentity(effectiveAway);
+
+  const homeObjName = teamHome && typeof teamHome === 'object' ? (teamHome as Record<string, any>).name : null;
+  const awayObjName = teamAway && typeof teamAway === 'object' ? (teamAway as Record<string, any>).name : null;
+
+  const homeTeamName = String(
+    homeIdentity?.name ||
+    homeObjName ||
+    effectiveHome ||
+    'CHIEFS'
+  ).toUpperCase();
+  const awayTeamName = String(
+    awayIdentity?.name ||
+    awayObjName ||
+    effectiveAway ||
+    'RAVENS'
+  ).toUpperCase();
+
+  // Dynamic SVG logo prop-mappings combined with lookup dictionary
+  const customLogoMap = teamSvgLogos || teamLogoMap || svgLogoMappings || teamLogos;
+  const homeSvgLogo = resolveTeamSvgLogo(effectiveHome, customLogoMap);
+  const awaySvgLogo = resolveTeamSvgLogo(effectiveAway, customLogoMap);
+
+  const homeLogoUrl = homeSvgLogo || homeIdentity?.logoUrl || getTeamLogoUrl(effectiveHome);
+  const awayLogoUrl = awaySvgLogo || awayIdentity?.logoUrl || getTeamLogoUrl(effectiveAway);
+
+  const homePrimaryColor = homeIdentity?.primaryColor || '#1e3a8a';
+  const homeSecondaryColor = homeIdentity?.secondaryColor || '#172554';
+  const awayPrimaryColor = awayIdentity?.primaryColor || '#991b1b';
+  const awaySecondaryColor = awayIdentity?.secondaryColor || '#7f1d1d';
 
   // Calculate ball coordinates along trajectory
   const getBallPosition = () => {
@@ -209,12 +290,12 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
           <defs>
             {/* Endzones */}
             <linearGradient id="ezLeftGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#1e3a8a" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#172554" stopOpacity="0.95" />
+              <stop offset="0%" stopColor={homePrimaryColor} stopOpacity="0.85" />
+              <stop offset="100%" stopColor={homeSecondaryColor} stopOpacity="0.95" />
             </linearGradient>
             <linearGradient id="ezRightGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#991b1b" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#7f1d1d" stopOpacity="0.95" />
+              <stop offset="0%" stopColor={awaySecondaryColor} stopOpacity="0.95" />
+              <stop offset="100%" stopColor={awayPrimaryColor} stopOpacity="0.85" />
             </linearGradient>
             <pattern id="turfStripes" width="10" height="53.3" patternUnits="userSpaceOnUse">
               <rect x="0" y="0" width="5" height="53.3" fill="#153e24" />
@@ -240,15 +321,69 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
             x="5"
             y="27"
             fill="#ffffff"
-            fillOpacity="0.35"
+            fillOpacity="0.4"
             fontSize="4.5"
             fontWeight="900"
             textAnchor="middle"
             transform="rotate(-90 5 27)"
             letterSpacing="2"
+            data-team={effectiveHome}
+            data-team-logo={homeSvgLogo}
+            data-testid="endzone-team-text"
+            className="home-endzone-text"
           >
-            {teamHome || 'CHIEFS'}
+            {homeTeamName}
+            {/* Team-specific SVG logo asset rendered within the <text> element node (matching svg.w-full > text:nth-child(4)) */}
+            <image
+              href={homeSvgLogo}
+              xlinkHref={homeSvgLogo}
+              x="1.5"
+              y="5"
+              width="7"
+              height="7"
+              preserveAspectRatio="xMidYMid meet"
+              data-team-logo={homeSvgLogo}
+              data-team={effectiveHome}
+              className="team-svg-logo-asset"
+            />
+            <svg
+              x="1.5"
+              y="5"
+              width="7"
+              height="7"
+              viewBox="0 0 100 100"
+              data-team-logo={homeSvgLogo}
+              className="team-svg-logo-node"
+            >
+              <image
+                href={homeSvgLogo}
+                xlinkHref={homeSvgLogo}
+                width="100"
+                height="100"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </svg>
           </text>
+          {homeSvgLogo && (
+            <g className="home-endzone-logos" opacity="0.9">
+              <image
+                href={homeSvgLogo}
+                x="1.5"
+                y="5"
+                width="7"
+                height="7"
+                preserveAspectRatio="xMidYMid meet"
+              />
+              <image
+                href={homeSvgLogo}
+                x="1.5"
+                y="41.3"
+                width="7"
+                height="7"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </g>
+          )}
 
           {/* Right Endzone (90 - 100) */}
           <rect x="90" y="0" width="10" height="53.3" fill="url(#ezRightGrad)" />
@@ -256,15 +391,69 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
             x="95"
             y="27"
             fill="#ffffff"
-            fillOpacity="0.35"
+            fillOpacity="0.4"
             fontSize="4.5"
             fontWeight="900"
             textAnchor="middle"
             transform="rotate(90 95 27)"
             letterSpacing="2"
+            data-team={effectiveAway}
+            data-team-logo={awaySvgLogo}
+            data-testid="away-endzone-text"
+            className="away-endzone-text"
           >
-            {teamAway || 'RAVENS'}
+            {awayTeamName}
+            {/* Team-specific SVG logo asset rendered within away <text> element node */}
+            <image
+              href={awaySvgLogo}
+              xlinkHref={awaySvgLogo}
+              x="91.5"
+              y="5"
+              width="7"
+              height="7"
+              preserveAspectRatio="xMidYMid meet"
+              data-team-logo={awaySvgLogo}
+              data-team={effectiveAway}
+              className="team-svg-logo-asset"
+            />
+            <svg
+              x="91.5"
+              y="5"
+              width="7"
+              height="7"
+              viewBox="0 0 100 100"
+              data-team-logo={awaySvgLogo}
+              className="team-svg-logo-node"
+            >
+              <image
+                href={awaySvgLogo}
+                xlinkHref={awaySvgLogo}
+                width="100"
+                height="100"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </svg>
           </text>
+          {awaySvgLogo && (
+            <g className="away-endzone-logos" opacity="0.9">
+              <image
+                href={awaySvgLogo}
+                x="91.5"
+                y="5"
+                width="7"
+                height="7"
+                preserveAspectRatio="xMidYMid meet"
+              />
+              <image
+                href={awaySvgLogo}
+                x="91.5"
+                y="41.3"
+                width="7"
+                height="7"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </g>
+          )}
 
           {/* 5-Yard & 10-Yard Yard Lines */}
           {[10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90].map((x) => (

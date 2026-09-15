@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { HighlightVideoItem, HighlightCategory, HighlightDownloadQueueItem, YtPlaylistScraperConfig } from '../../types';
-import { MOCK_HIGHLIGHT_VIDEOS, DEFAULT_SCRAPER_CONFIG } from '../../data/highlightVideosData';
+import { HighlightVideoItem, HighlightDownloadQueueItem, YtPlaylistScraperConfig } from '../../types';
+import { 
+  MOCK_HIGHLIGHT_VIDEOS, 
+  DEFAULT_SCRAPER_CONFIG,
+  VALIDATED_2026_PLAYLISTS,
+  isPlaylistEligible
+} from '../../data/highlightVideosData';
 import {
   parseYouTubeVideoTitle,
   generateYtdlpBashScript,
@@ -10,30 +15,30 @@ import {
   generateWebExtensionFiles
 } from '../../utils/highlightMatcher';
 import { NFL_TEAMS, SCHEDULES_DATA } from '../../data/sportsDataMock';
+import { YouTubePlayerModal } from '../video/YouTubePlayerModal';
+import { ImportYouTubeVideoModal } from '../video/ImportYouTubeVideoModal';
+import { AddToPlaylistPlanModal } from '../video/AddToPlaylistPlanModal';
+import { TeamLogo } from '../TeamLogo';
 import {
   Play,
   Download,
   Terminal,
-  FileCode,
-  Layers,
-  Sparkles,
-  ExternalLink,
   Search,
-  Filter,
-  CheckCircle2,
   RefreshCw,
   Copy,
   Check,
-  Flame,
   Radio,
   FileDown,
-  Globe,
-  Sliders,
   X,
-  Volume2,
-  Trophy,
-  Activity,
-  AlertCircle
+  Plus,
+  ListPlus,
+  Youtube,
+  Tv,
+  Filter,
+  CheckCircle2,
+  Sparkles,
+  Layers,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface GameHighlightsAutomationViewProps {
@@ -49,23 +54,41 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
   onSelectGameKey,
   onNavigateToGame
 }) => {
-  const [videos, setVideos] = useState<HighlightVideoItem[]>(MOCK_HIGHLIGHT_VIDEOS);
+  // Load initial videos (MOCK_HIGHLIGHT_VIDEOS contains Previews and Highlights for every 2026 game)
+  const [videos, setVideos] = useState<HighlightVideoItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('nfl_custom_imported_videos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return [...parsed, ...MOCK_HIGHLIGHT_VIDEOS];
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved videos', e);
+    }
+    return MOCK_HIGHLIGHT_VIDEOS;
+  });
+
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('ALL');
+  const [selectedPlaylistFilter, setSelectedPlaylistFilter] = useState<string>('ALL');
+  
+  // Modals
   const [activeModalVideo, setActiveModalVideo] = useState<HighlightVideoItem | null>(null);
-
-  // Script Generator Modal & Tabs
-  const [activeScriptTab, setActiveScriptTab] = useState<'bash' | 'python' | 'n8n' | 'extension'>('bash');
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [isPlaylistPlanModalOpen, setIsPlaylistPlanModalOpen] = useState<boolean>(false);
   const [isScriptModalOpen, setIsScriptModalOpen] = useState<boolean>(false);
+  const [activeScriptTab, setActiveScriptTab] = useState<'bash' | 'python' | 'n8n' | 'extension'>('bash');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Scraper Engine Config State
   const [config, setConfig] = useState<YtPlaylistScraperConfig>(DEFAULT_SCRAPER_CONFIG);
   const [isMatchingRunning, setIsMatchingRunning] = useState<boolean>(false);
-  const [matchStatusLog, setMatchStatusLog] = useState<string>('Idle. Ready to match playlists.');
+  const [matchStatusLog, setMatchStatusLog] = useState<string>('Ready. Previews and Highlights indexed for every 2026 matchup.');
   const [manualTitleInput, setManualTitleInput] = useState<string>(
-    'Ravens vs. Chiefs Week 1 Highlights | NFL 2026'
+    'Ravens vs. Chiefs 2026 Week 1 Game Highlights & Full Drives'
   );
   const [parsedPreview, setParsedPreview] = useState<any>(null);
 
@@ -73,47 +96,94 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
   const [downloadQueue, setDownloadQueue] = useState<HighlightDownloadQueueItem[]>([
     {
       id: 'q-1',
-      videoId: 'kc_bal_q4_2026',
-      title: 'Baltimore Ravens vs. Kansas City Chiefs Game Highlights',
-      gameMatchup: 'BAL @ KC (Q4)',
-      playlistTitle: '2026 Week 1 Game Highlights',
-      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      videoId: 'hyEng1b5j8o',
+      title: 'Packers vs Eagles Week 1 Game Highlights & Full Drives',
+      gameMatchup: 'GB @ PHI',
+      playlistTitle: '2026 Week 1 Game Highlights & Full Drives - Official NFL',
+      url: 'https://www.youtube.com/watch?v=hyEng1b5j8o&list=PLOq0V4m8a5Y0',
       format: 'mp4',
       status: 'COMPLETED',
       progress: 100,
-      speed: '12.4 MB/s',
+      speed: '14.2 MB/s',
       eta: '00:00',
-      addedAt: Date.now() - 1000 * 60 * 15,
-      downloadPath: '~/NFL/downloads/2026_Season/Week_01/KC_vs_BAL/'
+      addedAt: Date.now() - 1000 * 60 * 12,
+      downloadPath: '~/NFL/downloads/2026_Season/Week_01/PHI_vs_GB/'
     }
   ]);
 
-  // Handle live matching test from title string
+  // Save imported videos
+  const handleImportVideo = (newVideo: HighlightVideoItem) => {
+    setVideos((prev) => {
+      const updated = [newVideo, ...prev];
+      try {
+        const userOnly = updated.filter((v) => v.id.startsWith('imported-') || v.id.startsWith('batch-'));
+        localStorage.setItem('nfl_custom_imported_videos', JSON.stringify(userOnly));
+      } catch (e) {
+        console.warn('LocalStorage save failed', e);
+      }
+      return updated;
+    });
+  };
+
+  const handleBatchImport = (newVideos: HighlightVideoItem[]) => {
+    setVideos((prev) => {
+      const updated = [...newVideos, ...prev];
+      try {
+        const userOnly = updated.filter((v) => v.id.startsWith('imported-') || v.id.startsWith('batch-'));
+        localStorage.setItem('nfl_custom_imported_videos', JSON.stringify(userOnly));
+      } catch (e) {
+        console.warn('LocalStorage save failed', e);
+      }
+      return updated;
+    });
+  };
+
+  // Rule enforcement: Keep all playlists that have this year (2026) in the title AND have Preview OR Highlights
+  const eligiblePlaylists = VALIDATED_2026_PLAYLISTS.filter((pl) => 
+    isPlaylistEligible(pl.title, '2026')
+  );
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const downloadFileBlob = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleTestParse = () => {
     const res = parseYouTubeVideoTitle(manualTitleInput);
     setParsedPreview(res);
   };
 
-  // Run automated scan & matching simulation
   const handleRunAutoMatcher = () => {
     setIsMatchingRunning(true);
-    setMatchStatusLog('Connecting to YouTube API / Scraper endpoint...');
+    setMatchStatusLog('Connecting to YouTube Data API & NFL Official Playlists...');
 
     setTimeout(() => {
       setMatchStatusLog('Harvesting playlists from https://www.youtube.com/@NFL/playlists...');
-    }, 800);
+    }, 600);
 
     setTimeout(() => {
-      setMatchStatusLog('Parsing ytInitialData and matching video titles against SportsData.io NFL schedules...');
-    }, 1600);
+      setMatchStatusLog('Applying filter rule: [Year == 2026] && [Title has "Preview" OR "Highlights"]...');
+    }, 1200);
 
     setTimeout(() => {
       setIsMatchingRunning(false);
-      setMatchStatusLog(`✅ Matched ${videos.length} highlight clips with 98% confidence.`);
-    }, 2400);
+      setMatchStatusLog(`✅ Synchronized: All ${SCHEDULES_DATA.length} games mapped to Preview & Highlights video streams.`);
+    }, 1800);
   };
 
-  // Trigger download for a video
   const handleStartDownload = (video: HighlightVideoItem) => {
     const newItem: HighlightDownloadQueueItem = {
       id: `q-${Date.now()}`,
@@ -125,181 +195,196 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
       format: String(video.downloadFormat || '').startsWith('mp3') ? 'mp3' : 'mp4',
       status: 'ACTIVE',
       progress: 15,
-      speed: '9.8 MB/s',
-      eta: '00:18',
+      speed: '11.8 MB/s',
+      eta: '00:14',
       addedAt: Date.now(),
       downloadPath: `~/NFL/downloads/${video.season}/${video.week}/${video.homeTeam}_vs_${video.awayTeam}/`
     };
 
     setDownloadQueue((prev) => [newItem, ...prev]);
 
-    // Simulate progress animation
     let currentProg = 15;
     const interval = setInterval(() => {
-      currentProg += 20;
+      currentProg += 25;
       if (currentProg >= 100) {
         clearInterval(interval);
         setDownloadQueue((prev) =>
-          prev.map((q) =>
-            q.id === newItem.id
-              ? { ...q, status: 'COMPLETED', progress: 100, eta: '00:00', speed: 'Done' }
-              : q
+          prev.map((it) =>
+            it.id === newItem.id
+              ? { ...it, status: 'COMPLETED', progress: 100, eta: '00:00', speed: 'Finished' }
+              : it
           )
         );
       } else {
         setDownloadQueue((prev) =>
-          prev.map((q) => (q.id === newItem.id ? { ...q, progress: currentProg } : q))
+          prev.map((it) =>
+            it.id === newItem.id ? { ...it, progress: currentProg } : it
+          )
         );
       }
     }, 400);
   };
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  const downloadFileBlob = (content: string, filename: string, type = 'text/plain') => {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Filtered Videos
-  const filteredVideos = videos.filter((v) => {
-    if (activeCategory !== 'ALL' && v.category !== activeCategory) return false;
-    if (selectedTeamFilter !== 'ALL' && v.homeTeam !== selectedTeamFilter && v.awayTeam !== selectedTeamFilter)
+  // Filter video collection
+  const filteredVideos = videos.filter((video) => {
+    // Category filter
+    if (activeCategory === 'PREVIEW' && video.category !== 'PREVIEW' && video.videoType !== 'PREVIEW') {
       return false;
-    if (
-      searchQuery &&
-      !v.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !v.matchedPlayer?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    }
+    if (activeCategory === 'HIGHLIGHTS' && video.category !== 'HIGHLIGHTS' && video.videoType !== 'HIGHLIGHTS') {
       return false;
+    }
+    if (activeCategory !== 'ALL' && activeCategory !== 'PREVIEW' && activeCategory !== 'HIGHLIGHTS') {
+      if (video.category !== activeCategory) return false;
+    }
+
+    // Playlist filter
+    if (selectedPlaylistFilter !== 'ALL') {
+      if (video.playlistId !== selectedPlaylistFilter) return false;
+    }
+
+    // Team filter
+    if (selectedTeamFilter !== 'ALL') {
+      if (video.homeTeam !== selectedTeamFilter && video.awayTeam !== selectedTeamFilter) {
+        return false;
+      }
+    }
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = video.title.toLowerCase().includes(q);
+      const matchHome = video.homeTeam.toLowerCase().includes(q);
+      const matchAway = video.awayTeam.toLowerCase().includes(q);
+      const matchWeek = video.week.toLowerCase().includes(q);
+      if (!matchTitle && !matchHome && !matchAway && !matchWeek) return false;
+    }
+
     return true;
   });
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Top Header Banner */}
-      <div className="p-6 rounded-3xl bg-[#101014] border border-white/10 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-1.5 z-10">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-mono font-black uppercase tracking-wider flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>Auto Video Highlight Engine</span>
+    <div className="space-y-6">
+      {/* View Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#121218] via-[#101016] to-[#09090d] border border-white/10 p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl">
+        <div className="space-y-2 z-10">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-3 py-1 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 text-xs font-mono font-bold flex items-center gap-1.5">
+              <Youtube className="w-3.5 h-3.5" />
+              <span>YouTube Video Integration</span>
             </span>
-            <span className="text-xs text-slate-400 font-mono">
-              yt-dlp &bull; SportsData.io Matching &bull; Automated Transcoding
+            <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold">
+              2026 Regular Season
+            </span>
+            <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold">
+              Previews & Highlights Active
             </span>
           </div>
+
           <h1 className="text-2xl sm:text-3xl font-black text-white font-serif italic tracking-tight">
-            Game Highlights & Video Automation Studio
+            NFL Video Vault & Playlist Manager
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-            Automatically harvest, correlate, and download NFL highlight reels, red-zone touchdowns, mic’d up audio,
-            and game-recap footage directly from official playlists using yt-dlp pipelines.
+          <p className="text-xs sm:text-sm text-slate-400 max-w-2xl font-mono">
+            Every 2026 game is outfitted with official <strong>Previews</strong> and <strong>Highlights</strong>. 
+            All playlists are strictly filtered to this year with Preview or Highlights.
           </p>
         </div>
 
-        {/* Action Button Strip */}
-        <div className="flex flex-wrap items-center gap-2 z-10">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 z-10 shrink-0">
           <button
-            onClick={() => setIsScriptModalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-[#1c1c24] hover:bg-[#252530] text-amber-400 hover:text-white border border-amber-500/30 text-xs font-mono font-bold transition-all flex items-center gap-2 shadow-sm"
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-black transition flex items-center gap-2 shadow-lg shadow-blue-600/20"
           >
-            <Terminal className="w-4 h-4 text-amber-400" />
-            <span>Export Automation Scripts</span>
+            <Plus className="w-4 h-4" />
+            <span>Import YouTube Video</span>
           </button>
 
           <button
-            onClick={handleRunAutoMatcher}
-            disabled={isMatchingRunning}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-xs font-black uppercase font-mono hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50"
+            onClick={() => setIsPlaylistPlanModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-mono text-xs font-black transition flex items-center gap-2 shadow-lg shadow-amber-500/25"
           >
-            <RefreshCw className={`w-4 h-4 ${isMatchingRunning ? 'animate-spin' : ''}`} />
-            <span>{isMatchingRunning ? 'Matching Playlists...' : '⚡ Scan & Match Highlights'}</span>
+            <ListPlus className="w-4 h-4 text-slate-950" />
+            <span>Add to My YouTube Playlist</span>
+          </button>
+
+          <button
+            onClick={() => setIsScriptModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-[#1c1c24] hover:bg-[#252530] text-amber-400 hover:text-white border border-amber-500/30 text-xs font-mono font-bold transition flex items-center gap-1.5"
+          >
+            <Terminal className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Export Scripts</span>
           </button>
         </div>
       </div>
 
-      {/* Interactive Title Regex & AI Matcher Sandbox */}
-      <div className="p-5 rounded-2xl bg-[#121217] border border-white/10 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
-            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <span>Highlight Title Correlation Sandbox</span>
+      {/* Playlist Rule Enforcement Bar */}
+      <div className="p-4 rounded-2xl bg-[#0f0f15] border border-white/10 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-red-600/20 text-red-400 border border-red-500/30">
+              <Sparkles className="w-4 h-4" />
+            </span>
+            <span className="text-xs font-mono font-bold text-white">
+              Strict Playlist Filter Rule:
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+              Year: &ldquo;2026&rdquo; AND Title: (&ldquo;Preview&rdquo; OR &ldquo;Highlights&rdquo;)
+            </span>
           </div>
-          <span className="text-[11px] font-mono text-slate-400">
-            Regex Matcher: <code className="text-amber-400">Season &bull; Week &bull; Teams &bull; Play Type</code>
+
+          <span className="text-xs font-mono text-slate-400">
+            {eligiblePlaylists.length} Verified Playlists Retained
           </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-2">
-          <div className="relative flex-1 w-full">
-            <input
-              type="text"
-              value={manualTitleInput}
-              onChange={(e) => setManualTitleInput(e.target.value)}
-              placeholder="Paste raw YouTube video title (e.g., Packers vs Eagles Week 1 Highlights)..."
-              className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-[#09090b] border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-            />
-          </div>
+        {/* Playlist selector chips */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <button
-            onClick={handleTestParse}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs font-mono hover:bg-amber-400 transition whitespace-nowrap"
+            onClick={() => setSelectedPlaylistFilter('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition ${
+              selectedPlaylistFilter === 'ALL'
+                ? 'bg-white/20 text-white border border-white/30'
+                : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+            }`}
           >
-            ⚡ Test Auto-Match
+            All Playlists ({videos.length} videos)
           </button>
-        </div>
 
-        {/* Live Matching Output Tag Bar */}
-        {parsedPreview && (
-          <div className="p-3 rounded-xl bg-black/40 border border-white/10 flex flex-wrap items-center gap-2 text-xs font-mono">
-            <span className="text-slate-400">Matched Entities:</span>
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-              🗓️ {parsedPreview.season} ({parsedPreview.week})
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold">
-              🏈 {parsedPreview.matchedAwayTeam} vs {parsedPreview.matchedHomeTeam}
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-              🏷️ Category: {parsedPreview.category}
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold">
-              🎯 Confidence: {parsedPreview.matchConfidence}%
-            </span>
-            <span className="text-slate-400 ml-auto text-[11px]">
-              Game Key: <strong className="text-white">{parsedPreview.matchedGameKey}</strong>
-            </span>
-          </div>
-        )}
+          {eligiblePlaylists.map((pl) => (
+            <button
+              key={pl.playlistId}
+              onClick={() => setSelectedPlaylistFilter(pl.playlistId)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 ${
+                selectedPlaylistFilter === pl.playlistId
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                  : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+              }`}
+            >
+              <Youtube className="w-3.5 h-3.5 text-red-400" />
+              <span className="truncate max-w-[240px]">{pl.title}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Filter & Search Bar */}
+      {/* Filter & Search Controls */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1">
+        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1">
           {[
-            { id: 'ALL', label: '🎬 All Highlights' },
-            { id: 'GAME_RECAP', label: '🏆 Game Recaps' },
-            { id: 'TOUCHDOWNS', label: '⚡ Touchdowns' },
-            { id: 'REDZONE_DRIVES', label: '🚩 Red Zone' },
-            { id: 'BIG_PLAYS', label: '🔥 Big Plays' },
-            { id: 'DEFENSIVE_STOPS', label: '🛡️ Defense & Pick-6' },
-            { id: 'MIC_D_UP', label: "🎙️ Mic'd Up" }
+            { id: 'ALL', label: `All Videos (${videos.length})` },
+            { id: 'PREVIEW', label: '⚡ Game Previews' },
+            { id: 'HIGHLIGHTS', label: '🏆 Game Highlights' }
           ].map((cat) => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition ${
                 activeCategory === cat.id
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  ? cat.id === 'PREVIEW'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-amber-500 text-slate-950 shadow-md font-black'
                   : 'bg-[#141418] text-slate-400 hover:text-white hover:bg-[#1f1f26] border border-white/5'
               }`}
             >
@@ -316,7 +401,7 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
             aria-label="Filter highlights by team"
             className="px-3 py-2 rounded-xl bg-[#141418] border border-white/10 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
           >
-            <option value="ALL">All NFL Teams</option>
+            <option value="ALL">All 32 NFL Teams</option>
             {NFL_TEAMS.map((t) => (
               <option key={t.Key} value={t.Key}>
                 {t.FullName} ({t.Key})
@@ -324,117 +409,134 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
             ))}
           </select>
 
-          <div className="relative flex-1 md:w-48">
+          <div className="relative flex-1 md:w-56">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search highlights..."
-              className="w-full pl-8 pr-3 py-2 rounded-xl bg-[#141418] border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              placeholder="Search matchup or week..."
+              className="w-full pl-8 pr-3 py-2 rounded-xl bg-[#141418] border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
             />
           </div>
         </div>
       </div>
 
-      {/* Video Cards Grid */}
+      {/* Videos Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredVideos.map((video) => (
-          <div
-            key={video.id}
-            className="rounded-2xl bg-[#111116] border border-white/10 overflow-hidden hover:border-white/20 transition-all flex flex-col group shadow-lg"
-          >
-            {/* Thumbnail Header */}
-            <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-pointer" onClick={() => setActiveModalVideo(video)}>
-              <img
-                src={video.thumbnailUrl}
-                alt={video.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-85 group-hover:opacity-100"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
+        {filteredVideos.map((video) => {
+          const isPreview = video.category === 'PREVIEW' || video.videoType === 'PREVIEW';
+          return (
+            <div
+              key={video.id}
+              className="rounded-2xl bg-[#111116] border border-white/10 overflow-hidden hover:border-white/20 transition-all flex flex-col group shadow-lg"
+            >
+              {/* Thumbnail Header */}
+              <div 
+                className="relative aspect-video bg-slate-900 overflow-hidden cursor-pointer" 
+                onClick={() => setActiveModalVideo(video)}
+              >
+                <img
+                  src={video.thumbnailUrl}
+                  alt={video.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-85 group-hover:opacity-100"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30" />
 
-              {/* Category Badge */}
-              <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-amber-400 border border-white/10 text-[10px] font-mono font-bold uppercase">
-                  {video.category.replace('_', ' ')}
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-emerald-500/80 text-slate-950 text-[10px] font-mono font-black">
-                  {video.matchConfidence}% MATCH
-                </span>
-              </div>
-
-              {/* Duration Chip */}
-              <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded bg-black/80 font-mono text-[11px] font-bold text-white">
-                {video.duration}
-              </div>
-
-              {/* Play Overlay Button */}
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                <div className="w-12 h-12 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-xl transform scale-90 group-hover:scale-100 transition-transform">
-                  <Play className="w-5 h-5 fill-slate-950 ml-0.5" />
-                </div>
-              </div>
-            </div>
-
-            {/* Video Body Details */}
-            <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span className="text-amber-400 font-bold">
-                    {video.awayTeam} @ {video.homeTeam} &bull; {video.week}
+                {/* Badges */}
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                  <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono font-black uppercase shadow-md ${
+                    isPreview 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-amber-500 text-slate-950'
+                  }`}>
+                    {isPreview ? '⚡ Game Preview' : '🏆 Game Highlights'}
                   </span>
-                  <span>{video.viewsCount}</span>
+                  <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-slate-300 border border-white/10 text-[10px] font-mono font-bold">
+                    Week {video.week.replace('Week_', '')}
+                  </span>
                 </div>
 
-                <h3
-                  onClick={() => setActiveModalVideo(video)}
-                  className="text-xs font-bold text-slate-200 group-hover:text-white line-clamp-2 cursor-pointer leading-snug"
-                >
-                  {video.title}
-                </h3>
+                {/* Duration Chip */}
+                <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded bg-black/80 font-mono text-[11px] font-bold text-white">
+                  {video.duration}
+                </div>
 
-                {video.matchedPlayer && (
-                  <p className="text-[11px] text-indigo-300/90 font-mono">
-                    ⭐ Key Matchup: {video.matchedPlayer}
-                  </p>
-                )}
+                {/* Play Button Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-xl transform scale-90 group-hover:scale-100 transition-transform ${
+                    isPreview ? 'bg-blue-500 text-white' : 'bg-amber-500 text-slate-950'
+                  }`}>
+                    <Play className="w-5 h-5 fill-current ml-0.5" />
+                  </div>
+                </div>
               </div>
 
-              {/* yt-dlp Command Preview Box */}
-              <div className="p-2 rounded-lg bg-black/50 border border-white/5 font-mono text-[10px] text-slate-400 truncate flex items-center justify-between gap-2">
-                <span className="truncate text-slate-400">
-                  <code className="text-amber-400/90">yt-dlp</code> -f "{video.downloadFormat}" ...
-                </span>
-                <button
-                  onClick={() => copyToClipboard(video.ytdlpCommand, video.id)}
-                  className="text-slate-400 hover:text-white"
-                  title="Copy yt-dlp download command"
-                >
-                  {copiedKey === video.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
+              {/* Video Body Details */}
+              <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <TeamLogo teamKey={video.awayTeam} size="xs" shape="circle" />
+                      <span className="text-xs font-mono font-bold text-white">{video.awayTeam}</span>
+                      <span className="text-slate-500 text-xs">@</span>
+                      <TeamLogo teamKey={video.homeTeam} size="xs" shape="circle" />
+                      <span className="text-xs font-mono font-bold text-white">{video.homeTeam}</span>
+                    </div>
 
-              {/* Footer Actions */}
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setActiveModalVideo(video)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-bold font-mono transition flex items-center gap-1.5"
-                >
-                  <Play className="w-3 h-3 fill-slate-300" />
-                  <span>Watch Clip</span>
-                </button>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {video.viewsCount}
+                    </span>
+                  </div>
 
-                <button
-                  onClick={() => handleStartDownload(video)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black font-mono transition flex items-center gap-1.5 shadow-sm"
-                >
-                  <Download className="w-3 h-3" />
-                  <span>Download MP4</span>
-                </button>
+                  <h3
+                    onClick={() => setActiveModalVideo(video)}
+                    className="text-xs font-bold text-slate-200 group-hover:text-white line-clamp-2 cursor-pointer leading-snug font-mono"
+                  >
+                    {video.title}
+                  </h3>
+
+                  <div className="text-[11px] font-mono text-slate-400 truncate">
+                    Playlist: <span className="text-slate-300">{video.playlistTitle}</span>
+                  </div>
+                </div>
+
+                {/* Footer Controls */}
+                <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => setActiveModalVideo(video)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition flex items-center gap-1.5 ${
+                      isPreview
+                        ? 'bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30'
+                        : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30'
+                    }`}
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Watch {isPreview ? 'Preview' : 'Highlights'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => copyToClipboard(video.ytdlpCommand, video.id)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                      title="Copy yt-dlp command"
+                    >
+                      {copiedKey === video.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+
+                    <button
+                      onClick={() => handleStartDownload(video)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                      title="Download MP4"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Active Download Queue Section */}
@@ -519,100 +621,36 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
         </div>
       </div>
 
-      {/* Video Player Modal */}
+      {/* Embedded YouTube IFrame API Player Modal */}
       {activeModalVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-4xl bg-[#0f0f13] border border-white/15 rounded-3xl overflow-hidden shadow-2xl space-y-4">
-            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#141419]">
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-mono font-bold">
-                  {activeModalVideo.category.replace('_', ' ')}
-                </span>
-                <h3 className="text-sm font-bold text-white truncate max-w-lg font-serif">
-                  {activeModalVideo.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setActiveModalVideo(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Embedded Player Simulated Interface */}
-            <div className="px-6 space-y-4">
-              <div className="relative aspect-video rounded-2xl bg-black border border-white/10 overflow-hidden flex items-center justify-center group">
-                <img
-                  src={activeModalVideo.thumbnailUrl}
-                  alt={activeModalVideo.title}
-                  className="w-full h-full object-cover opacity-80"
-                />
-                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-3">
-                  <a
-                    href={`https://www.youtube.com/watch?v=${activeModalVideo.videoId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-4 rounded-full bg-amber-500 text-slate-950 hover:bg-amber-400 transition-transform transform hover:scale-110 shadow-2xl flex items-center justify-center"
-                  >
-                    <Play className="w-8 h-8 fill-slate-950 ml-1" />
-                  </a>
-                  <p className="text-xs text-slate-300 font-mono">
-                    Click to Open Official NFL Broadcast Stream
-                  </p>
-                </div>
-              </div>
-
-              {/* Telemetry and Action Row */}
-              <div className="p-4 rounded-2xl bg-[#141419] border border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-                <div className="space-y-1">
-                  <p className="text-slate-400">
-                    Matchup: <strong className="text-white">{activeModalVideo.awayTeam} vs {activeModalVideo.homeTeam}</strong> &bull; {activeModalVideo.duration}
-                  </p>
-                  <p className="text-slate-500">
-                    Playlist: {activeModalVideo.playlistTitle}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleStartDownload(activeModalVideo)}
-                    className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-black hover:bg-amber-400 transition flex items-center gap-1.5 shadow-md"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download MP4</span>
-                  </button>
-
-                  <a
-                    href={activeModalVideo.youtubeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold transition flex items-center gap-1.5"
-                  >
-                    <span>Open YouTube</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-[#141419] border-t border-white/10 flex justify-end">
-              <button
-                onClick={() => setActiveModalVideo(null)}
-                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold font-mono"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <YouTubePlayerModal
+          video={activeModalVideo}
+          onClose={() => setActiveModalVideo(null)}
+          onSwitchVideo={(newVid) => setActiveModalVideo(newVid)}
+          availableVideos={videos}
+          onAddToPlaylist={() => setIsPlaylistPlanModalOpen(true)}
+        />
       )}
 
-      {/* Script & Pipeline Exporter Modal (From PDFs) */}
+      {/* Import YouTube Video & Playlist Modal */}
+      <ImportYouTubeVideoModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportVideo={handleImportVideo}
+        onBatchImportVideos={handleBatchImport}
+      />
+
+      {/* Plan How to Add Videos to YouTube Playlist Modal */}
+      <AddToPlaylistPlanModal
+        isOpen={isPlaylistPlanModalOpen}
+        onClose={() => setIsPlaylistPlanModalOpen(false)}
+        videos={videos}
+      />
+
+      {/* Automation Script Modal */}
       {isScriptModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="relative w-full max-w-4xl bg-[#0f0f13] border border-white/15 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            {/* Header */}
             <div className="p-5 border-b border-white/10 flex items-center justify-between bg-[#141419]">
               <div className="flex items-center gap-2">
                 <Terminal className="w-5 h-5 text-amber-400" />
@@ -628,7 +666,6 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
               </button>
             </div>
 
-            {/* Script Navigation Tabs */}
             <div className="px-5 py-2.5 bg-[#0a0a0d] border-b border-white/10 flex items-center gap-2 overflow-x-auto">
               {[
                 { id: 'bash', label: '📜 yt-dlp Smart Bash (ytdl.sh)' },
@@ -650,7 +687,6 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
               ))}
             </div>
 
-            {/* Script Code Preview */}
             <div className="flex-1 p-5 overflow-y-auto bg-[#070709] font-mono text-xs text-slate-300">
               <pre className="whitespace-pre-wrap leading-relaxed">
                 {activeScriptTab === 'bash' && generateYtdlpBashScript(videos, config)}
@@ -660,10 +696,9 @@ export const GameHighlightsAutomationView: React.FC<GameHighlightsAutomationView
               </pre>
             </div>
 
-            {/* Modal Footer Controls */}
             <div className="p-4 bg-[#141419] border-t border-white/10 flex items-center justify-between gap-3">
               <span className="text-xs text-slate-400 font-mono">
-                Derived directly from your document automation specifications
+                Supports YouTube IFrame API and batch yt-dlp harvesting
               </span>
 
               <div className="flex items-center gap-2">

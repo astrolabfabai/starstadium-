@@ -442,34 +442,43 @@ export const PERSONNEL_GROUPINGS: PersonnelEfficiency[] = [
   }
 ];
 
-export function getPlayTacticalConcept(play: PlayByPlayEvent): FootballPlayConcept {
+export function getPlayTacticalConcept(play?: PlayByPlayEvent | null): FootballPlayConcept {
+  if (!play) {
+    return FOOTBALL_PLAYS[0];
+  }
+
   if (play.customTacticalConcept) {
     return play.customTacticalConcept;
   }
 
+  const desc = (play.Description || '').toLowerCase();
+  const rawDescription = play.Description || 'Play execution';
+  const yardLine = typeof play.YardLine === 'number' ? play.YardLine : 25;
+  const distance = typeof play.Distance === 'number' ? play.Distance : 10;
+  const yardsGained = typeof play.YardsGained === 'number' ? play.YardsGained : 0;
+  const possession = play.Possession || 'NFL';
+
   // Calculate field coordinates (0 to 100: 0-10 Left Endzone, 10-60 own side, 60-90 opp side, 90-100 Right Endzone)
   let losYard = 35;
-  if (play.YardLineSide === play.Possession) {
-    losYard = 10 + Math.min(50, Math.max(1, play.YardLine));
+  if (play.YardLineSide === possession) {
+    losYard = 10 + Math.min(50, Math.max(1, yardLine));
   } else {
-    losYard = 60 + (50 - Math.min(50, Math.max(1, play.YardLine)));
+    losYard = 60 + (50 - Math.min(50, Math.max(1, yardLine)));
   }
 
-  const firstDownYard = Math.min(90, Math.max(10, losYard + Math.max(1, play.Distance)));
-  const targetGainYard = Math.min(90, Math.max(10, losYard + play.YardsGained));
+  const firstDownYard = Math.min(90, Math.max(10, losYard + Math.max(1, distance)));
+  const targetGainYard = Math.min(90, Math.max(10, losYard + yardsGained));
 
-  const isPass = play.PlayType === 'Pass' || play.Description.toLowerCase().includes('pass');
-  const isRun = play.PlayType === 'Run' || play.Description.toLowerCase().includes('tackle') || play.Description.toLowerCase().includes('rush') || play.Description.toLowerCase().includes('scramble');
-  const isScramble = play.Description.toLowerCase().includes('scramble');
-  const isTouchdown = play.YardsGained >= 30 || play.Description.toLowerCase().includes('touchdown');
-
-  const desc = play.Description.toLowerCase();
+  const isPass = play.PlayType === 'Pass' || desc.includes('pass');
+  const isRun = play.PlayType === 'Run' || desc.includes('tackle') || desc.includes('rush') || desc.includes('scramble');
+  const isScramble = desc.includes('scramble');
+  const isTouchdown = yardsGained >= 30 || desc.includes('touchdown');
 
   // Extract names from description
-  const qbMatch = play.Description.match(/\(([A-Z]\.[A-Za-z]+)\)/) || play.Description.match(/([A-Z]\.[A-Za-z]+)\s+pass/);
-  const qbName = qbMatch ? qbMatch[1] : (play.Possession === 'KC' ? 'P.Mahomes' : play.Possession === 'BAL' ? 'L.Jackson' : 'QB');
+  const qbMatch = rawDescription.match(/\(([A-Z]\.[A-Za-z]+)\)/) || rawDescription.match(/([A-Z]\.[A-Za-z]+)\s+pass/);
+  const qbName = qbMatch ? qbMatch[1] : (possession === 'KC' ? 'P.Mahomes' : possession === 'BAL' ? 'L.Jackson' : 'QB');
 
-  const targetMatch = play.Description.match(/to\s+([A-Z]\.[A-Za-z]+|[A-Z][a-z]+\s+[A-Z][a-z]+)/);
+  const targetMatch = rawDescription.match(/to\s+([A-Z]\.[A-Za-z]+|[A-Z][a-z]+\s+[A-Z][a-z]+)/);
   const targetName = play.targetPlayer || (targetMatch ? targetMatch[1] : 'Primary Target');
 
   // Build play-specific offensive and defensive nodes
@@ -479,17 +488,17 @@ export function getPlayTacticalConcept(play: PlayByPlayEvent): FootballPlayConce
     const runnerName = play.ballCarrier || (desc.includes('pacheco') ? 'I.Pacheco' : desc.includes('henry') ? 'D.Henry' : desc.includes('jackson') ? 'L.Jackson' : 'RB');
 
     return {
-      id: `play-${play.PlayID}`,
-      name: `${play.Possession} • ${isScramble ? 'QB Scramble Extension' : 'Inside Zone / Gap Blast'} (+${play.YardsGained} yds)`,
+      id: `play-${play.PlayID || 'concept'}`,
+      name: `${possession} • ${isScramble ? 'QB Scramble Extension' : 'Inside Zone / Gap Blast'} (+${yardsGained} yds)`,
       category: 'Run',
       personnel: '12 Personnel (1 RB, 2 TE, 2 WR)',
       formation: 'Shotgun Offset Pistol',
       defensiveCoverage: 'Cover 1 Man (8-Man Box)',
-      description: play.Description,
+      description: rawDescription,
       keys: [
         `Ball carrier ${runnerName} attacks the ${isLeft ? 'A/B gap off Left Tackle' : 'C-gap edge'} behind double-team blocks.`,
         `Offensive line climbs to second level to seal off Mike linebacker.`,
-        `Result: +${play.YardsGained} yard gain down to the ${targetGainYard - 10} yard line.`
+        `Result: +${yardsGained} yard gain down to the ${targetGainYard - 10} yard line.`
       ],
       progression: [
         `1. Mesh handoff read at LOS yard ${losYard}`,
@@ -539,22 +548,22 @@ export function getPlayTacticalConcept(play: PlayByPlayEvent): FootballPlayConce
   }
 
   // Pass concepts
-  const isDeep = isTouchdown || play.YardsGained >= 20 || desc.includes('deep');
+  const isDeep = isTouchdown || yardsGained >= 20 || desc.includes('deep');
   const isMiddle = desc.includes('middle') || desc.includes('kelce') || desc.includes('cross');
   const targetY = isMiddle ? 26.6 : desc.includes('right') ? 42 : 12;
 
   return {
-    id: `play-${play.PlayID}`,
-    name: `${play.Possession} • ${isDeep ? 'Deep Shot Strike' : isMiddle ? 'Seam Stretch / Crosser' : 'Quick Rhythm Pass'} (+${play.YardsGained} yds)`,
+    id: `play-${play.PlayID || 'concept'}`,
+    name: `${possession} • ${isDeep ? 'Deep Shot Strike' : isMiddle ? 'Seam Stretch / Crosser' : 'Quick Rhythm Pass'} (+${yardsGained} yds)`,
     category: 'Pass',
     personnel: '11 Personnel (3 WR, 1 TE, 1 RB)',
     formation: isDeep ? 'Shotgun 3x1 Trips Verticals' : 'Shotgun 2x2 Spread',
     defensiveCoverage: isDeep ? 'Cover 3 Sky' : 'Cover 2 Man Under',
-    description: play.Description,
+    description: rawDescription,
     keys: [
       `Quarterback ${qbName} takes 3/5 step drop, climbs pocket, and delivers to ${targetName}.`,
-      `Target route executed to exact yard depth ${targetGainYard - 10} for +${play.YardsGained} yards.`,
-      `EPA Impact: ${play.epa !== undefined && play.epa >= 0 ? `+${play.epa.toFixed(2)}` : `${play.epa ?? '+0.65'}`} • Win Probability: ${play.WinProbabilityPct}%`
+      `Target route executed to exact yard depth ${targetGainYard - 10} for +${yardsGained} yards.`,
+      `EPA Impact: ${play.epa !== undefined && play.epa >= 0 ? `+${play.epa.toFixed(2)}` : `${play.epa ?? '+0.65'}`} • Win Probability: ${play.WinProbabilityPct || 50}%`
     ],
     progression: [
       `1. Primary: ${targetName} on ${isDeep ? 'Deep Post / Go Route' : 'Inside Seam Route'}`,
@@ -587,7 +596,7 @@ export function getPlayTacticalConcept(play: PlayByPlayEvent): FootballPlayConce
           { x: Math.min(90, targetGainYard), y: targetY }
         ],
         passTarget: true,
-        actionText: `Completed Catch for +${play.YardsGained} yds`
+        actionText: `Completed Catch for +${yardsGained} yds`
       },
       {
         id: 'rb',

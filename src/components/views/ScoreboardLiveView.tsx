@@ -1179,10 +1179,12 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
                     {activePlayConcept && (
                       <GridironTacticalCanvas
                         playConcept={activePlayConcept}
+                        playEvent={activePlay}
                         isAnimating={isRoutesAnimating}
                         selectedNodeId={selectedNodeId}
                         onSelectNode={setSelectedNodeId}
-                        zoom={1}
+                        teamHome={activeGame.homeTeam?.abbreviation || activeGame.homeTeam?.name || 'KC'}
+                        teamAway={activeGame.awayTeam?.abbreviation || activeGame.awayTeam?.name || 'BAL'}
                       />
                     )}
                     {activePlay && (

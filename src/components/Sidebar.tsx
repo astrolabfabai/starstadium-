@@ -136,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'Account & Administration',
       groupEmoji: '⚙️',
       items: [
+        { id: 'alerts', label: 'Live Alerts Hub & Cookie Lab', shortLabel: 'Alerts Hub', emoji: '🔔', num: 'ALRT', badge: 'COOKIE', badgeColor: 'bg-rose-500/20 text-rose-300 border border-rose-500/30' },
         { id: 'user_account', label: 'User Account & Profile', shortLabel: 'Account', emoji: '👤', num: 'ME', badge: 'USER', badgeColor: 'bg-sky-500/20 text-sky-400 border border-sky-500/30' },
         { id: 'admin', label: 'Server & API Admin', shortLabel: 'Admin', emoji: '🛡️', num: 'ROOT', badge: 'BACKEND', badgeColor: 'bg-amber-500/20 text-amber-400 border border-amber-500/30' }
       ]

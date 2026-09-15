@@ -131,6 +131,7 @@ function AppContent() {
       <ScoringNotificationCenterModal
         onSelectGame={handleSelectGame}
         onOpenAiWithPrompt={handleOpenAiWithPrompt}
+        onNavigateToAlertsHub={() => setActiveView('alerts')}
       />
 
       {/* Left Combined Sidebar Menu */}

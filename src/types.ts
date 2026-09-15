@@ -16,7 +16,8 @@ export type ViewMode =
   | 'news'
   | 'db_viewer'
   | 'user_account'
-  | 'admin';
+  | 'admin'
+  | 'alerts';
 
 export type SeasonCode = '2026REG' | '2026PRE' | '2026POST' | '2025REG' | '2024REG' | '2024POST' | '2023REG';
 
@@ -520,6 +521,8 @@ export interface ScoringDriveAlert {
 }
 
 export type HighlightCategory = 
+  | 'PREVIEW'
+  | 'HIGHLIGHTS'
   | 'GAME_RECAP'
   | 'TOUCHDOWNS'
   | 'REDZONE_DRIVES'
@@ -542,6 +545,7 @@ export interface HighlightVideoItem {
   videoId: string;
   playlistId?: string;
   playlistTitle?: string;
+  videoType?: 'PREVIEW' | 'HIGHLIGHTS' | 'RECAP';
   thumbnailUrl: string;
   duration: string; // e.g. "12:45"
   category: HighlightCategory;

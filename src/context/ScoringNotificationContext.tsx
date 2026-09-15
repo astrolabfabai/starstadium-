@@ -2,6 +2,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { ScoringDriveAlert, ScoreType } from '../types';
 import { NFL_TEAMS, SCHEDULES_DATA } from '../data/sportsDataMock';
 import { playScoringChime } from '../utils/audioChime';
+import {
+  getStoredAlertsConfig,
+  saveAlertsConfigToCookies,
+  clearAlertCookies,
+  getAlertCookieMeta,
+  AlertsFilterConfig,
+  DEFAULT_ALERTS_FILTER,
+  StoredAlertsConfig
+} from '../utils/cookieUtils';
 
 interface ScoringNotificationContextType {
   alerts: ScoringDriveAlert[];
@@ -10,15 +19,27 @@ interface ScoringNotificationContextType {
   isSoundEnabled: boolean;
   isNotificationsEnabled: boolean;
   isAutoSimulationActive: boolean;
+  alertFilters: AlertsFilterConfig;
   setIsSoundEnabled: (enabled: boolean) => void;
   setIsNotificationsEnabled: (enabled: boolean) => void;
   setIsAutoSimulationActive: (active: boolean) => void;
+  setAlertFilters: (filters: AlertsFilterConfig) => void;
+  toggleFilterCategory: (key: keyof AlertsFilterConfig) => void;
+  cookieMeta: {
+    hasCookie: boolean;
+    cookieValue: string | null;
+    isStoredInCookie: boolean;
+    expirationDesc: string;
+  };
+  resetCookiesAndTurnOff: () => void;
   dismissToast: (alertId: string) => void;
   markAllAsRead: () => void;
   clearAlertHistory: () => void;
   triggerSampleScoringDrive: (customType?: ScoreType, specificGameKey?: string) => ScoringDriveAlert;
   isNotificationCenterOpen: boolean;
   setIsNotificationCenterOpen: (open: boolean) => void;
+  refreshFromCookies: () => StoredAlertsConfig;
+  isInitialized: boolean;
 }
 
 const ScoringNotificationContext = createContext<ScoringNotificationContextType | undefined>(undefined);
@@ -205,12 +226,92 @@ const SAMPLE_SCORING_SCENARIOS = [
 ];
 
 export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Read stored user preferences from cookies upon initialization
   const [alerts, setAlerts] = useState<ScoringDriveAlert[]>(INITIAL_ALERTS);
   const [activeToasts, setActiveToasts] = useState<ScoringDriveAlert[]>([]);
-  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(true);
-  const [isNotificationsEnabled, setIsNotificationsEnabled] = useState<boolean>(true);
-  const [isAutoSimulationActive, setIsAutoSimulationActive] = useState<boolean>(true);
+  const [isNotificationsEnabled, setIsNotificationsEnabledState] = useState<boolean>(() => getStoredAlertsConfig().alertsEnabled);
+  const [isSoundEnabled, setIsSoundEnabledState] = useState<boolean>(() => getStoredAlertsConfig().soundEnabled);
+  const [isAutoSimulationActive, setIsAutoSimulationActiveState] = useState<boolean>(() => getStoredAlertsConfig().autoSimulation);
+  const [alertFilters, setAlertFiltersState] = useState<AlertsFilterConfig>(() => getStoredAlertsConfig().filters);
+  const [cookieMeta, setCookieMeta] = useState(() => getAlertCookieMeta());
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+
+  // Re-read and apply configuration directly from browser cookies
+  const refreshFromCookies = useCallback((): StoredAlertsConfig => {
+    const stored = getStoredAlertsConfig();
+    setIsNotificationsEnabledState(stored.alertsEnabled);
+    setIsSoundEnabledState(stored.soundEnabled);
+    setIsAutoSimulationActiveState(stored.autoSimulation);
+    setAlertFiltersState(stored.filters);
+    setCookieMeta(getAlertCookieMeta());
+    return stored;
+  }, []);
+
+  // Read from cookies upon initialization/mount to ensure the alert system respects previously stored user preference
+  useEffect(() => {
+    refreshFromCookies();
+    setIsInitialized(true);
+  }, [refreshFromCookies]);
+
+  // Synchronize from cookies when window regains focus to support multi-tab synchronization
+  useEffect(() => {
+    const handleSync = () => {
+      refreshFromCookies();
+    };
+    window.addEventListener('focus', handleSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    });
+    return () => {
+      window.removeEventListener('focus', handleSync);
+    };
+  }, [refreshFromCookies]);
+
+  // Synchronize with cookie whenever user changes alert settings
+  const setIsNotificationsEnabled = useCallback((enabled: boolean) => {
+    setIsNotificationsEnabledState(enabled);
+    saveAlertsConfigToCookies({ alertsEnabled: enabled });
+    setCookieMeta(getAlertCookieMeta());
+  }, []);
+
+  const setIsSoundEnabled = useCallback((enabled: boolean) => {
+    setIsSoundEnabledState(enabled);
+    saveAlertsConfigToCookies({ soundEnabled: enabled });
+    setCookieMeta(getAlertCookieMeta());
+  }, []);
+
+  const setIsAutoSimulationActive = useCallback((active: boolean) => {
+    setIsAutoSimulationActiveState(active);
+    saveAlertsConfigToCookies({ autoSimulation: active });
+    setCookieMeta(getAlertCookieMeta());
+  }, []);
+
+  const setAlertFilters = useCallback((filters: AlertsFilterConfig) => {
+    setAlertFiltersState(filters);
+    saveAlertsConfigToCookies({ filters });
+    setCookieMeta(getAlertCookieMeta());
+  }, []);
+
+  const toggleFilterCategory = useCallback((key: keyof AlertsFilterConfig) => {
+    setAlertFiltersState((prev) => {
+      const updated = { ...prev, [key]: !prev[key] };
+      saveAlertsConfigToCookies({ filters: updated });
+      setCookieMeta(getAlertCookieMeta());
+      return updated;
+    });
+  }, []);
+
+  const resetCookiesAndTurnOff = useCallback(() => {
+    clearAlertCookies();
+    setIsNotificationsEnabledState(false);
+    setIsSoundEnabledState(false);
+    setIsAutoSimulationActiveState(false);
+    setAlertFiltersState(DEFAULT_ALERTS_FILTER);
+    setCookieMeta(getAlertCookieMeta());
+  }, []);
 
   // Helper to resolve team colors
   const getTeamColor = (teamKey: string): string => {
@@ -239,10 +340,21 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
     setActiveToasts([]);
   }, []);
 
-  // Dispatch a new alert
+  // Dispatch a new alert (respects enabled state and filter preferences)
   const dispatchAlert = useCallback(
     (newAlert: ScoringDriveAlert) => {
       if (!isNotificationsEnabled) return;
+
+      // Filter check based on score type
+      if (newAlert.scoreType === 'TOUCHDOWN' && !alertFilters.touchdowns) return;
+      if (newAlert.scoreType === 'FIELD_GOAL' && !alertFilters.fieldGoals) return;
+      if (
+        (newAlert.scoreType === 'PICK_SIX' || newAlert.scoreType === 'FUMBLE_RETURN_TD') &&
+        !alertFilters.defensive
+      )
+        return;
+      if (newAlert.scoreType === 'SAFETY' && !alertFilters.safeties) return;
+      if (newAlert.isRedZoneStrike && !alertFilters.redzone) return;
 
       // Add to alert log
       setAlerts((prev) => [newAlert, ...prev]);
@@ -252,7 +364,11 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
 
       // Play audio chime if enabled
       if (isSoundEnabled) {
-        if (newAlert.scoreType === 'TOUCHDOWN' || newAlert.scoreType === 'PICK_SIX' || newAlert.scoreType === 'FUMBLE_RETURN_TD') {
+        if (
+          newAlert.scoreType === 'TOUCHDOWN' ||
+          newAlert.scoreType === 'PICK_SIX' ||
+          newAlert.scoreType === 'FUMBLE_RETURN_TD'
+        ) {
           playScoringChime('touchdown');
         } else if (newAlert.scoreType === 'FIELD_GOAL') {
           playScoringChime('field_goal');
@@ -263,7 +379,7 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
         }
       }
     },
-    [isNotificationsEnabled, isSoundEnabled]
+    [isNotificationsEnabled, isSoundEnabled, alertFilters]
   );
 
   // Trigger a sample scoring drive (can be called manually from UI or auto-simulated)
@@ -323,21 +439,16 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
   );
 
   // Background simulation ticker for live scoring drive alerts across the NFL slate
+  // ONLY runs if user explicitly turned on alerts and auto-simulation!
   useEffect(() => {
     if (!isAutoSimulationActive || !isNotificationsEnabled) return;
 
-    // Trigger an initial alert on first visit after 4 seconds to give immediate live feedback
-    const initialTimer = setTimeout(() => {
-      triggerSampleScoringDrive('TOUCHDOWN', '202610101');
-    }, 4000);
-
-    // Periodic simulation every 45-60 seconds
+    // Periodic simulation every 45-60 seconds when enabled
     const interval = setInterval(() => {
       triggerSampleScoringDrive();
     }, 45000);
 
     return () => {
-      clearTimeout(initialTimer);
       clearInterval(interval);
     };
   }, [isAutoSimulationActive, isNotificationsEnabled, triggerSampleScoringDrive]);
@@ -353,15 +464,22 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
         isSoundEnabled,
         isNotificationsEnabled,
         isAutoSimulationActive,
+        alertFilters,
         setIsSoundEnabled,
         setIsNotificationsEnabled,
         setIsAutoSimulationActive,
+        setAlertFilters,
+        toggleFilterCategory,
+        cookieMeta,
+        resetCookiesAndTurnOff,
         dismissToast,
         markAllAsRead,
         clearAlertHistory,
         triggerSampleScoringDrive,
         isNotificationCenterOpen,
-        setIsNotificationCenterOpen
+        setIsNotificationCenterOpen,
+        refreshFromCookies,
+        isInitialized
       }}
     >
       {children}

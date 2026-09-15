@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile, ViewMode, SeasonCode } from '../../types';
 import { NFL_TEAMS } from '../../data/sportsDataMock';
 import { useScoringNotifications } from '../../context/ScoringNotificationContext';
+import { ScoringAlertSettings } from '../notifications/ScoringAlertSettings';
 import {
   User,
   Shield,
@@ -56,7 +57,7 @@ export const UserAccountView: React.FC<UserAccountViewProps> = ({
   selectedSeason = '2026REG',
   onNavigateToView
 }) => {
-  const { isNotificationsEnabled, setIsNotificationsEnabled } = useScoringNotifications();
+  const { isNotificationsEnabled, setIsNotificationsEnabled, cookieMeta, resetCookiesAndTurnOff } = useScoringNotifications();
   const [profile, setProfile] = useState<UserProfile>(() => {
     try {
       const saved = localStorage.getItem('starstadium_user_profile');
@@ -269,43 +270,21 @@ export const UserAccountView: React.FC<UserAccountViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-3 text-xs">
-            {/* Master Pop-Up Notifications Switch [ON/OFF] */}
-            <div className="p-3.5 rounded-xl bg-[#09090b] border border-amber-500/25 flex items-center justify-between gap-3 shadow-sm">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white text-sm">Pop-Up Notifications [ON/OFF]</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black uppercase ${
-                      isNotificationsEnabled
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                    }`}
-                  >
-                    {isNotificationsEnabled ? '[ON]' : '[OFF]'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Master toggle for live scoring drive toasts and floating alerts across your screen
-                </p>
-              </div>
-              <button
-                id="btn-profile-toggle-notifications"
-                type="button"
-                onClick={() => setIsNotificationsEnabled(!isNotificationsEnabled)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                  isNotificationsEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                }`}
-                role="switch"
-                aria-checked={isNotificationsEnabled}
-                title={isNotificationsEnabled ? 'Click to turn Pop-ups [OFF]' : 'Click to turn Pop-ups [ON]'}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    isNotificationsEnabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+          <div className="space-y-4 text-xs">
+            {/* ScoringAlertSettings Component */}
+            <ScoringAlertSettings
+              variant="compact"
+              showCookieDetails={true}
+              showTestButton={true}
+              showResetButton={true}
+              title="NFL Game Scoring Alert Settings"
+              subtitle="Default: OFF. Persists across browser refreshes via js-cookie."
+            />
+
+            <div className="pt-2 border-t border-white/10 space-y-2">
+              <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">
+                Additional Situational Triggers
+              </span>
             </div>
 
             {[
