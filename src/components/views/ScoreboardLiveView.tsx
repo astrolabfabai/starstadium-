@@ -83,25 +83,56 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   onNavigateToHighlights,
   onNavigateToWinProbability
 }) => {
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
-  const [isMasterClockRunning, setIsMasterClockRunning] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [isLiveApi, setIsLiveApi] = useState<boolean>(false);
+  const CURRENT_WEEK = 1;
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedWeek, setSelectedWeek] = useState<number | 'ALL'>(1);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LIVE' | 'FINAL' | 'UPCOMING'>('ALL');
   const [selectedGameKey, setSelectedGameKey] = useState<string>(propSelectedGameKey || '202610101');
 
-  // Initialize live game state with THIS WEEK'S games from 2026 Season, sorted chronologically starting at first game
+  // Helper to strictly sort games with those playing "now" at the top
+  const sortGamesPlayingNowAtTop = (gameList: LiveGameState[]): LiveGameState[] => {
+    return [...gameList].sort((a, b) => {
+      const aLive = a.status === 'InProgress' || (typeof a.status === 'string' && a.status.toLowerCase().includes('in progress'));
+      const bLive = b.status === 'InProgress' || (typeof b.status === 'string' && b.status.toLowerCase().includes('in progress'));
+      if (aLive && !bLive) return -1; // playing now -> top
+      if (!aLive && bLive) return 1;
+
+      // If both are playing now, maintain live sequence (e.g. Q4 before Q3 before Q2)
+      if (aLive && bLive) {
+        return 0;
+      }
+
+      // If both are not playing now, show Scheduled before Final
+      const aFinal = a.status === 'Final';
+      const bFinal = b.status === 'Final';
+      if (!aFinal && bFinal) return -1;
+      if (aFinal && !bFinal) return 1;
+
+      return 0;
+    });
+  };
+
+  // Initialize live game state strictly with CURRENT WEEK'S games from 2026 Season, placing games playing "now" at the top
   const [liveGames, setLiveGames] = useState<LiveGameState[]>(() => {
-    const thisWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
-    thisWeekSchedules.sort((a, b) => {
+    const currentWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === CURRENT_WEEK);
+    
+    // Sort so games playing "now" (InProgress) are strictly at the top
+    currentWeekSchedules.sort((a, b) => {
+      const aLive = a.Status === 'InProgress';
+      const bLive = b.Status === 'InProgress';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+      const aFinal = a.Status === 'Final';
+      const bFinal = b.Status === 'Final';
+      if (!aFinal && bFinal) return -1;
+      if (aFinal && !bFinal) return 1;
       const dateA = new Date(`${a.Date}T${a.Time || '13:00'}:00`).getTime();
       const dateB = new Date(`${b.Date}T${b.Time || '13:00'}:00`).getTime();
       return dateA - dateB;
     });
 
-    return thisWeekSchedules.map((g, idx) => {
+    return currentWeekSchedules.map((g, idx) => {
       const isLive = g.Status === 'InProgress';
       const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === g.HomeTeam);
       const awayTeamInfo = NFL_TEAMS.find((t) => t.Key === g.AwayTeam);
@@ -109,7 +140,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
       return {
         id: g.GameKey || `game-${idx}`,
         gameKey: g.GameKey,
-        week: g.Week || 1,
+        week: g.Week || CURRENT_WEEK,
         awayTeam: {
           abbreviation: g.AwayTeam,
           name: awayTeamInfo ? awayTeamInfo.FullName : g.AwayTeam,
@@ -144,10 +175,6 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   useEffect(() => {
     if (propSelectedGameKey && propSelectedGameKey !== selectedGameKey) {
       setSelectedGameKey(propSelectedGameKey);
-      const matched = liveGames.find((g) => g.gameKey === propSelectedGameKey);
-      if (matched && matched.week) {
-        setSelectedWeek(matched.week);
-      }
     }
   }, [propSelectedGameKey]);
 
@@ -158,78 +185,6 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
     }
   };
 
-  const handleWeekChange = (week: number | 'ALL') => {
-    setSelectedWeek(week);
-    const gamesInWeek = liveGames.filter((g) => week === 'ALL' || g.week === week);
-    if (gamesInWeek.length > 0 && !gamesInWeek.some((g) => g.gameKey === selectedGameKey)) {
-      handleGameSelect(gamesInWeek[0].gameKey);
-    }
-  };
-
-  // Second-by-second countdown clock ticker for live games
-  useEffect(() => {
-    if (!isMasterClockRunning) return;
-
-    const secondInterval = setInterval(() => {
-      setLiveGames((prevGames) =>
-        prevGames.map((game) => {
-          if (game.status !== 'InProgress' || !game.isClockRunning) {
-            return game;
-          }
-
-          // Decrement game clock by 1 second
-          let nextClockSecs = game.clockSeconds - 1;
-          let nextPlayClock = game.playClock - 1;
-          let nextQuarter = game.quarter;
-          let nextStatus = game.status;
-          let nextStatusDetail = game.statusDetail;
-
-          // Reset play clock when it hits 0
-          if (nextPlayClock < 0) {
-            nextPlayClock = 40;
-          }
-
-          // Handle end of quarter/game
-          if (nextClockSecs <= 0) {
-            if (game.quarter === 'Q1') {
-              nextQuarter = 'Q2';
-              nextClockSecs = 900; // 15 mins
-            } else if (game.quarter === 'Q2') {
-              nextQuarter = 'HALFTIME';
-              nextClockSecs = 0;
-            } else if (game.quarter === 'Q3') {
-              nextQuarter = 'Q4';
-              nextClockSecs = 900;
-            } else if (game.quarter === 'Q4') {
-              nextQuarter = 'FINAL';
-              nextClockSecs = 0;
-              nextStatus = 'Final';
-            }
-          }
-
-          const mins = Math.floor(Math.max(0, nextClockSecs) / 60);
-          const secs = Math.max(0, nextClockSecs) % 60;
-          const formattedClock = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
-          if (nextStatus === 'InProgress') {
-            nextStatusDetail = `${nextQuarter} ${formattedClock}`;
-          }
-
-          return {
-            ...game,
-            clockSeconds: Math.max(0, nextClockSecs),
-            playClock: nextPlayClock,
-            quarter: nextQuarter,
-            status: nextStatus,
-            statusDetail: nextStatusDetail
-          };
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(secondInterval);
-  }, [isMasterClockRunning]);
-
   // Format MM:SS with exact second formatting
   const formatSecondsToClock = (totalSeconds: number) => {
     const mins = Math.floor(Math.max(0, totalSeconds) / 60);
@@ -237,19 +192,21 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Filter games based on selected week and status
-  const displayedGames = liveGames.filter((g) => {
-    const matchesWeek = selectedWeek === 'ALL' || g.week === selectedWeek;
-    const matchesStatus =
-      statusFilter === 'ALL' ||
-      (statusFilter === 'LIVE' && g.status === 'InProgress') ||
-      (statusFilter === 'FINAL' && g.status === 'Final') ||
-      (statusFilter === 'UPCOMING' && g.status === 'Scheduled');
-    return matchesWeek && matchesStatus;
-  });
+  // Filter games strictly to the current week, sorting those playing "now" at the top
+  const displayedGames = sortGamesPlayingNowAtTop(
+    liveGames.filter((g) => {
+      const matchesCurrentWeek = g.week === CURRENT_WEEK;
+      const matchesStatus =
+        statusFilter === 'ALL' ||
+        (statusFilter === 'LIVE' && g.status === 'InProgress') ||
+        (statusFilter === 'FINAL' && g.status === 'Final') ||
+        (statusFilter === 'UPCOMING' && g.status === 'Scheduled');
+      return matchesCurrentWeek && matchesStatus;
+    })
+  );
 
   // Dynamic Quarter Score Progression based on active selected game
-  const activeGame = liveGames.find((g) => g.gameKey === selectedGameKey) || displayedGames[0] || liveGames[0];
+  const activeGame = liveGames.find((g) => g.gameKey === selectedGameKey && g.week === CURRENT_WEEK) || displayedGames[0] || liveGames[0];
   const awayScore = activeGame?.awayTeam?.score ?? 0;
   const homeScore = activeGame?.homeTeam?.score ?? 0;
   const awayAbbr = activeGame?.awayTeam?.abbreviation || 'AWY';
@@ -269,8 +226,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   const fetchLiveScoreboard = async () => {
     setIsLoading(true);
     try {
-      const weekParam = selectedWeek === 'ALL' ? '' : `&week=${selectedWeek}`;
-      const res = await fetch(`/api/scores/live?season=${selectedSeason}${weekParam}`);
+      const res = await fetch(`/api/scores/live?season=${selectedSeason}&week=${CURRENT_WEEK}`);
       if (res.ok) {
         const data = await res.json();
         setRawApiFeed(data);
@@ -284,7 +240,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
             const isFinal = g.status === 'Final' || (typeof g.status === 'string' && g.status.toLowerCase().includes('final'));
             const homeScore = typeof g.homeTeam?.score === 'number' ? g.homeTeam.score : parseInt(g.homeTeam?.score || '0', 10);
             const awayScore = typeof g.awayTeam?.score === 'number' ? g.awayTeam.score : parseInt(g.awayTeam?.score || '0', 10);
-            const gameWeek = typeof g.week === 'number' ? g.week : (typeof data.week === 'number' ? data.week : (selectedWeek === 'ALL' ? 1 : selectedWeek));
+            const gameWeek = typeof g.week === 'number' ? g.week : (typeof data.week === 'number' ? data.week : CURRENT_WEEK);
 
             return {
               id: g.id || `live-game-${idx}`,
@@ -321,16 +277,13 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
             };
           });
 
-          // Ensure strict chronological ordering starting at the first game of the week
-          mappedGames.sort((a, b) => {
-            const timeA = (a as any).date ? new Date((a as any).date).getTime() : 0;
-            const timeB = (b as any).date ? new Date((b as any).date).getTime() : 0;
-            return timeA - timeB;
-          });
+          // Strictly filter to current week's games and sort with games playing "now" at the top
+          const currentWeekMapped = mappedGames.filter((g) => g.week === CURRENT_WEEK || !g.week);
+          const sortedGames = sortGamesPlayingNowAtTop(currentWeekMapped);
 
-          setLiveGames(mappedGames);
-          if (mappedGames.length > 0 && !mappedGames.some((g) => g.gameKey === selectedGameKey)) {
-            setSelectedGameKey(mappedGames[0].gameKey);
+          setLiveGames(sortedGames);
+          if (sortedGames.length > 0 && !sortedGames.some((g) => g.gameKey === selectedGameKey)) {
+            setSelectedGameKey(sortedGames[0].gameKey);
           }
         }
       }
@@ -343,25 +296,24 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
 
   useEffect(() => {
     fetchLiveScoreboard();
-  }, [selectedSeason, selectedWeek]);
+  }, [selectedSeason]);
 
   // Check if any game is currently in progress
   const hasActiveGames = liveGames.some((g) => g.status === 'InProgress');
 
-  // STRICT REQUIREMENT: Only auto-refresh during games
+  // REFRESH LIVE GAMES ONLY: Only auto-refresh in background when games are actively in progress
   useEffect(() => {
-    if (!hasActiveGames) return; // Only refresh during games
+    if (!hasActiveGames) return;
 
     const interval = setInterval(() => {
       fetchLiveScoreboard();
-    }, 20000);
+    }, 15000); // 15 seconds live game score refresh
     return () => clearInterval(interval);
-  }, [hasActiveGames, selectedSeason, selectedWeek]);
+  }, [hasActiveGames, selectedSeason]);
 
   const {
     unreadCount,
-    setIsNotificationCenterOpen,
-    triggerSampleScoringDrive
+    setIsNotificationCenterOpen
   } = useScoringNotifications();
 
   const [focusedTab, setFocusedTab] = useState<'tactical' | 'win_prob' | 'possession_redzone' | 'score_flow' | 'odds'>('win_prob');
@@ -468,23 +420,19 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               </span>
             )}
 
-            {/* Master Clock Play/Pause Toggle */}
-            <button
-              onClick={() => setIsMasterClockRunning(!isMasterClockRunning)}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all shadow-sm ${
-                isMasterClockRunning
-                  ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-emerald-500/20'
-                  : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
-              }`}
-            >
-              {isMasterClockRunning ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              <span>{isMasterClockRunning ? 'Ticking' : 'Resume'}</span>
-            </button>
+            {/* Real-time Status Badge */}
+            {hasActiveGames && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                <span>Live Feed</span>
+              </span>
+            )}
 
             <button
               onClick={fetchLiveScoreboard}
               disabled={isLoading}
               className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-200 text-[10px] hover:bg-white/10 hover:text-white flex items-center gap-1 transition-all font-mono"
+              aria-label="Sync live games"
             >
               <RefreshCw className={`w-2.5 h-2.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Sync</span>
@@ -498,22 +446,14 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
                   ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
                   : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
               }`}
+              aria-label="Toggle telemetry audit"
             >
               <Shield className="w-2.5 h-2.5" />
               <span>Telemetry</span>
             </button>
 
-            {/* Scoring Alert Actions */}
+            {/* Scoring Alert Action */}
             <div className="flex items-center gap-1 pl-1 border-l border-white/10">
-              <button
-                onClick={() => triggerSampleScoringDrive('TOUCHDOWN', activeGame?.gameKey)}
-                className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-[10px] font-black hover:opacity-90 transition-all flex items-center gap-1 shadow-sm font-mono"
-                title="Trigger a real-time scoring drive alert for this matchup"
-              >
-                <Flame className="w-2.5 h-2.5 fill-slate-950 text-slate-950" />
-                <span>TD Sim</span>
-              </button>
-
               <button
                 onClick={() => setIsNotificationCenterOpen(true)}
                 className="p-1 rounded-md bg-[#18181b] border border-white/10 text-amber-400 hover:text-white hover:bg-white/10 transition-all relative font-mono"
@@ -616,22 +556,23 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
           </div>
         )}
 
-        {/* THIS WEEK'S GAMES FILTER BAR & SLATE CONTROLS */}
+        {/* CURRENT WEEK LIVE SLATE TOOLBAR & CONTROLS */}
         <div className="mb-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-1.5 p-1.5 sm:p-2 rounded-lg bg-[#09090b] border border-white/10 shadow-sm">
-          {/* Week Selection Pills */}
-          <div className="flex flex-wrap items-center gap-1">
+          {/* Current Week Badge & Priority Indicator */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono mr-0.5">
-              Slate:
+              Live Slate:
             </span>
             <div className="px-2.5 py-0.5 rounded-md text-[10px] font-bold font-mono bg-amber-500 text-slate-950 font-extrabold shadow-sm flex items-center gap-1.5">
-              <span>🏈 This Week (Week 1)</span>
+              <span>🏈 Current Week (Week {CURRENT_WEEK})</span>
               <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-black/20 text-slate-950 font-black">
-                {liveGames.length} Games
+                {liveGames.filter(g => g.week === CURRENT_WEEK).length} Games
               </span>
             </div>
-            <span className="text-[10px] text-amber-400/90 font-mono hidden sm:inline">
-              &bull; Starts with Kickoff Game: <strong>BAL @ KC</strong>
-            </span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[10px] font-mono font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+              <span>Playing "Now" at the Top</span>
+            </div>
           </div>
 
           {/* Status Filter Pills with Emojis */}
@@ -645,7 +586,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span>🌐</span>
-              <span>All ({liveGames.filter(g => selectedWeek === 'ALL' || g.week === selectedWeek).length})</span>
+              <span>All ({liveGames.filter(g => g.week === CURRENT_WEEK).length})</span>
             </button>
             <button
               onClick={() => setStatusFilter('LIVE')}
@@ -656,18 +597,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-              <span>🔴 Live ({liveGames.filter(g => (selectedWeek === 'ALL' || g.week === selectedWeek) && g.status === 'InProgress').length})</span>
-            </button>
-            <button
-              onClick={() => setStatusFilter('FINAL')}
-              className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition flex items-center gap-1 ${
-                statusFilter === 'FINAL'
-                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 font-bold'
-                  : 'bg-white/5 text-slate-400 hover:text-emerald-300'
-              }`}
-            >
-              <span>✅</span>
-              <span>Final ({liveGames.filter(g => (selectedWeek === 'ALL' || g.week === selectedWeek) && g.status === 'Final').length})</span>
+              <span>🔴 Live Now ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'InProgress').length})</span>
             </button>
             <button
               onClick={() => setStatusFilter('UPCOMING')}
@@ -678,7 +608,18 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span>📅</span>
-              <span>Upcoming ({liveGames.filter(g => (selectedWeek === 'ALL' || g.week === selectedWeek) && g.status === 'Scheduled').length})</span>
+              <span>Upcoming ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'Scheduled').length})</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('FINAL')}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition flex items-center gap-1 ${
+                statusFilter === 'FINAL'
+                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 font-bold'
+                  : 'bg-white/5 text-slate-400 hover:text-emerald-300'
+              }`}
+            >
+              <span>✅</span>
+              <span>Final ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'Final').length})</span>
             </button>
           </div>
         </div>
@@ -728,8 +669,10 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
                     <span>{g.channel}</span>
                   </span>
                   {isLive ? (
-                    <div className="flex items-center gap-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 px-1 py-0.1 rounded-full animate-pulse font-extrabold">
+                    <div className="flex items-center gap-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 px-1.5 py-0.5 rounded-full animate-pulse font-extrabold text-[8px]">
                       <span className="w-1 h-1 rounded-full bg-rose-500 animate-ping"></span>
+                      <span className="text-rose-400 uppercase font-black">Playing Now</span>
+                      <span className="text-white/40">&bull;</span>
                       <span>{g.quarter}</span>
                       <span className="text-white font-mono">{formattedClock}</span>
                     </div>

@@ -89,6 +89,11 @@ export const NewsTransactionsView: React.FC<NewsTransactionsViewProps> = ({
                   <img
                     src={news.PlayerPhotoUrl}
                     alt={news.Title}
+                    width={48}
+                    height={48}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
                     className="w-12 h-12 rounded-full object-cover mb-3 border border-white/10"
                   />
                 )}

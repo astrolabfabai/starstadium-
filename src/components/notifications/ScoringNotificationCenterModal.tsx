@@ -173,56 +173,6 @@ export const ScoringNotificationCenterModal: React.FC<ScoringNotificationCenterM
               {isSoundEnabled ? <Volume2 className="w-3.5 h-3.5 text-amber-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-500" />}
               <span>{isSoundEnabled ? '🔊 Sound On' : '🔇 Muted'}</span>
             </button>
-
-            {/* Auto Simulation Toggle */}
-            <button
-              onClick={() => setIsAutoSimulationActive(!isAutoSimulationActive)}
-              className={`px-2.5 py-1 rounded-xl border font-mono font-bold flex items-center gap-1.5 transition-all text-xs ${
-                isAutoSimulationActive
-                  ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                  : 'bg-white/5 text-slate-400 border-white/10'
-              }`}
-            >
-              {isAutoSimulationActive ? (
-                <>
-                  <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                  <span>🟢 Auto-Sim</span>
-                </>
-              ) : (
-                <>
-                  <Pause className="w-3.5 h-3.5 text-slate-500" />
-                  <span>⏸️ Paused</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Test Alert Emoji Action Chips */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => triggerSampleScoringDrive('TOUCHDOWN')}
-              className="px-2 py-1 rounded-lg bg-amber-500 text-slate-950 font-black text-[10px] uppercase font-mono hover:bg-amber-400 transition flex items-center gap-1"
-              title="Test Touchdown Alert"
-            >
-              <span>⚡</span>
-              <span>TD Sim</span>
-            </button>
-            <button
-              onClick={() => triggerSampleScoringDrive('FIELD_GOAL')}
-              className="px-2 py-1 rounded-lg bg-emerald-500 text-slate-950 font-black text-[10px] uppercase font-mono hover:bg-emerald-400 transition flex items-center gap-1"
-              title="Test Field Goal Alert"
-            >
-              <span>🎯</span>
-              <span>FG Sim</span>
-            </button>
-            <button
-              onClick={() => triggerSampleScoringDrive('PICK_SIX')}
-              className="px-2 py-1 rounded-lg bg-purple-500 text-white font-black text-[10px] uppercase font-mono hover:bg-purple-400 transition flex items-center gap-1"
-              title="Test Pick-Six Alert"
-            >
-              <span>🛡️</span>
-              <span>Pick 6</span>
-            </button>
           </div>
         </div>
 

@@ -15,6 +15,7 @@ import { PlayByPlayEvent } from '../../types';
 import { getPlaysForGame } from '../../data/gamePlaysData';
 import { NFL_TEAMS } from '../../data/sportsDataMock';
 import { TeamLogo } from '../TeamLogo';
+import { normalizeTeamKey } from '../../utils/teamUtils';
 import {
   TrendingUp,
   TrendingDown,
@@ -87,20 +88,24 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
   const [hoveredPoint, setHoveredPoint] = useState<WinProbDataPoint | null>(null);
   const [chartType, setChartType] = useState<'dual_line' | 'area_split'>('dual_line');
 
+  // Resolve team abbreviations safely
+  const homeAbbr = normalizeTeamKey(homeTeam?.abbreviation || homeTeam?.name || 'KC');
+  const awayAbbr = normalizeTeamKey(awayTeam?.abbreviation || awayTeam?.name || 'BAL');
+
   // Resolve team colors with fallback
-  const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === homeTeam.abbreviation);
-  const awayTeamInfo = NFL_TEAMS.find((t) => t.Key === awayTeam.abbreviation);
+  const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === homeAbbr);
+  const awayTeamInfo = NFL_TEAMS.find((t) => t.Key === awayAbbr);
 
   const homeColor =
-    homeTeam.color || (homeTeamInfo ? `#${homeTeamInfo.PrimaryColor.replace('#', '')}` : '#3b82f6');
+    homeTeam?.color || (homeTeamInfo ? `#${homeTeamInfo.PrimaryColor.replace('#', '')}` : '#3b82f6');
   const awayColor =
-    awayTeam.color || (awayTeamInfo ? `#${awayTeamInfo.PrimaryColor.replace('#', '')}` : '#ef4444');
+    awayTeam?.color || (awayTeamInfo ? `#${awayTeamInfo.PrimaryColor.replace('#', '')}` : '#ef4444');
 
   // Get chronological plays for this game
   const rawPlays = useMemo(() => {
     if (customPlays && customPlays.length > 0) return customPlays;
-    return getPlaysForGame(gameKey, awayTeam.abbreviation, homeTeam.abbreviation, status);
-  }, [gameKey, customPlays, awayTeam.abbreviation, homeTeam.abbreviation, status]);
+    return getPlaysForGame(gameKey, awayAbbr, homeAbbr, status);
+  }, [gameKey, customPlays, awayAbbr, homeAbbr, status]);
 
   // Compute pregame baseline win probability from spread
   const pregameHomeWinPct = useMemo(() => {
@@ -126,8 +131,8 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
       timeRemaining: '15:00',
       homeWinPct: pregameHomeWinPct,
       awayWinPct: parseFloat((100 - pregameHomeWinPct).toFixed(1)),
-      homeTeam: homeTeam.abbreviation,
-      awayTeam: awayTeam.abbreviation,
+      homeTeam: homeAbbr,
+      awayTeam: awayAbbr,
       homeScore: 0,
       awayScore: 0,
       description: `Pregame baseline projection based on Vegas odds & team power ratings.`,
@@ -141,13 +146,14 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
     let runningAwayScore = 0;
     let prevHomeWinPct = pregameHomeWinPct;
 
-    rawPlays.forEach((p, idx) => {
+    (rawPlays || []).forEach((p, idx) => {
+      const desc = p.Description ? String(p.Description) : '';
       // Score tracking heuristics
-      if (p.Description.includes('TOUCHDOWN') || p.PlayType === 'Touchdown') {
-        if (p.Possession === homeTeam.abbreviation) runningHomeScore += 7;
+      if (desc.toUpperCase().includes('TOUCHDOWN') || p.PlayType === 'Touchdown') {
+        if (p.Possession === homeAbbr) runningHomeScore += 7;
         else runningAwayScore += 7;
-      } else if (p.PlayType === 'Field Goal' && p.Description.includes('GOOD')) {
-        if (p.Possession === homeTeam.abbreviation) runningHomeScore += 3;
+      } else if (p.PlayType === 'Field Goal' && desc.toUpperCase().includes('GOOD')) {
+        if (p.Possession === homeAbbr) runningHomeScore += 3;
         else runningAwayScore += 3;
       }
 
@@ -165,14 +171,14 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
         timeRemaining: p.TimeRemaining,
         homeWinPct: roundedHomePct,
         awayWinPct: roundedAwayPct,
-        homeTeam: homeTeam.abbreviation,
-        awayTeam: awayTeam.abbreviation,
+        homeTeam: homeAbbr,
+        awayTeam: awayAbbr,
         homeScore: runningHomeScore,
         awayScore: runningAwayScore,
-        description: p.Description,
-        playType: p.PlayType,
+        description: desc,
+        playType: p.PlayType || 'Play',
         deltaHome: delta,
-        isBigPlay: p.IsBigPlay || Math.abs(delta) >= 8.0,
+        isBigPlay: Boolean(p.IsBigPlay || Math.abs(delta) >= 8.0),
         epa: p.epa,
         possession: p.Possession,
         downDistance: p.Down && p.Distance ? `${p.Down} & ${p.Distance}` : undefined
@@ -181,7 +187,9 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
 
     // If game is Final, append absolute 100% / 0% outcome point
     if (status === 'Final' && points.length > 0) {
-      const isHomeWin = homeTeam.score > awayTeam.score;
+      const homeScoreVal = homeTeam?.score ?? 0;
+      const awayScoreVal = awayTeam?.score ?? 0;
+      const isHomeWin = homeScoreVal > awayScoreVal;
       const finalHomePct = isHomeWin ? 100 : 0;
       const lastPoint = points[points.length - 1];
       points.push({
@@ -192,11 +200,11 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
         timeRemaining: '0:00',
         homeWinPct: finalHomePct,
         awayWinPct: 100 - finalHomePct,
-        homeTeam: homeTeam.abbreviation,
-        awayTeam: awayTeam.abbreviation,
-        homeScore: homeTeam.score,
-        awayScore: awayTeam.score,
-        description: `Official Final Score: ${awayTeam.name} ${awayTeam.score}, ${homeTeam.name} ${homeTeam.score}`,
+        homeTeam: homeAbbr,
+        awayTeam: awayAbbr,
+        homeScore: homeScoreVal,
+        awayScore: awayScoreVal,
+        description: `Official Final Score: ${awayTeam?.name || awayAbbr} ${awayScoreVal}, ${homeTeam?.name || homeAbbr} ${homeScoreVal}`,
         playType: 'Final',
         deltaHome: parseFloat((finalHomePct - lastPoint.homeWinPct).toFixed(1)),
         isBigPlay: true,
@@ -205,7 +213,7 @@ export const WinProbabilityChart: React.FC<WinProbabilityChartProps> = ({
     }
 
     return points;
-  }, [rawPlays, pregameHomeWinPct, homeTeam, awayTeam, status]);
+  }, [rawPlays, pregameHomeWinPct, homeTeam, awayTeam, homeAbbr, awayAbbr, status]);
 
   // Filter points for chart display
   const displayedPoints = useMemo(() => {

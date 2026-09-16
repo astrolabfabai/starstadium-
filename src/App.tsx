@@ -186,6 +186,7 @@ function AppContent() {
                 activeView === 'user_account' ? 'bg-sky-500 text-slate-950 border-sky-400' : 'bg-[#18181b] text-sky-400 border-white/10'
               }`}
               title="User Account"
+              aria-label="User Account"
             >
               <User className="w-4 h-4" />
             </button>
@@ -195,6 +196,7 @@ function AppContent() {
                 activeView === 'admin' ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-[#18181b] text-amber-400 border-white/10'
               }`}
               title="Server Admin"
+              aria-label="Server Admin"
             >
               <Shield className="w-4 h-4" />
             </button>

@@ -288,32 +288,6 @@ export const ScoringAlertSettings: React.FC<ScoringAlertSettingsProps> = ({
           </button>
         </div>
 
-        {/* Live Simulation Setting */}
-        <div className="p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-lg border ${isSimulation ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-              <Play className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-200">Auto Simulator</div>
-              <div className="text-[11px] text-slate-400">Feed drives every 18s</div>
-            </div>
-          </div>
-          <button
-            onClick={handleToggleSimulation}
-            role="switch"
-            aria-checked={isSimulation}
-            className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-              isSimulation ? 'bg-amber-600' : 'bg-slate-700'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                isSimulation ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
       </div>
 
       {/* Category Checkboxes */}

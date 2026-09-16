@@ -287,20 +287,11 @@ export const GridironFieldTrack: React.FC<GridironFieldTrackProps> = ({
                       borderColor: isSelected ? '#fbbf24' : primaryColor
                     }}
                   >
-                    {/* Team Color Dot or Logo */}
-                    {meta?.WikipediaLogoUrl ? (
-                      <img
-                        src={meta.WikipediaLogoUrl}
-                        alt={team.Team}
-                        className="w-4 h-4 object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span
-                        className="w-3 h-3 rounded-full border border-white/40 inline-block"
-                        style={{ backgroundColor: primaryColor }}
-                      />
-                    )}
+                    {/* Team Color Pill Marker (No Logo on Field) */}
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border border-white/50 inline-block shadow-sm"
+                      style={{ backgroundColor: primaryColor }}
+                    />
 
                     <span className="text-[11px] font-black text-white font-mono">
                       {team.Team}

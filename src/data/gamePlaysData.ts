@@ -1,5 +1,6 @@
 import { PlayByPlayEvent, FootballPlayConcept, FootballPlayerNode } from '../types';
 import { SCHEDULES_DATA } from './sportsDataMock';
+import { normalizeTeamKey } from '../utils/teamUtils';
 
 // Team rosters for play-by-play player generation
 interface TeamRosterProfile {
@@ -381,17 +382,20 @@ const DEFAULT_PROFILE = (team: string): TeamRosterProfile => ({
   safety: `${team} Free Safety`
 });
 
-export function getTeamRoster(team: string): TeamRosterProfile {
+export function getTeamRoster(rawTeam?: any): TeamRosterProfile {
+  const team = normalizeTeamKey(rawTeam) || 'NFL';
   return TEAM_PROFILES[team] || DEFAULT_PROFILE(team);
 }
 
 // Generate play-by-play and tactical concepts for ANY game
 export function generateGamePlays(
   gameKey: string,
-  awayTeam: string = 'BAL',
-  homeTeam: string = 'KC',
+  rawAwayTeam: any = 'BAL',
+  rawHomeTeam: any = 'KC',
   status: string = 'InProgress'
 ): PlayByPlayEvent[] {
+  const awayTeam = normalizeTeamKey(rawAwayTeam) || 'BAL';
+  const homeTeam = normalizeTeamKey(rawHomeTeam) || 'KC';
   const home = getTeamRoster(homeTeam);
   const away = getTeamRoster(awayTeam);
 
@@ -676,14 +680,17 @@ export function generateGamePlays(
 
 // Master selector to get plays for ANY game
 export function getPlaysForGame(
-  gameKeyOrId?: string | number,
-  fallbackAway?: string,
-  fallbackHome?: string,
+  gameKeyOrId?: any,
+  fallbackAway?: any,
+  fallbackHome?: any,
   status?: string
 ): PlayByPlayEvent[] {
+  const safeAway = fallbackAway ? normalizeTeamKey(fallbackAway) : '';
+  const safeHome = fallbackHome ? normalizeTeamKey(fallbackHome) : '';
+
   if (!gameKeyOrId) {
-    const away = fallbackAway || 'SEA';
-    const home = fallbackHome || 'NE';
+    const away = (safeAway && safeAway !== 'NFL') ? safeAway : 'SEA';
+    const home = (safeHome && safeHome !== 'NFL') ? safeHome : 'NE';
     return generateGamePlays('202610203', away, home, status || 'Final');
   }
 
@@ -691,12 +698,12 @@ export function getPlaysForGame(
   const match = SCHEDULES_DATA.find((g) => g.GameKey === strKey || String(g.GameKey).includes(strKey));
 
   if (match) {
-    const away = fallbackAway || match.AwayTeam;
-    const home = fallbackHome || match.HomeTeam;
+    const away = (safeAway && safeAway !== 'NFL') ? safeAway : normalizeTeamKey(match.AwayTeam);
+    const home = (safeHome && safeHome !== 'NFL') ? safeHome : normalizeTeamKey(match.HomeTeam);
     return generateGamePlays(match.GameKey, away, home, match.Status || status);
   }
 
-  const away = fallbackAway || (strKey.includes('202610203') ? 'SEA' : 'BAL');
-  const home = fallbackHome || (strKey.includes('202610203') ? 'NE' : 'KC');
+  const away = (safeAway && safeAway !== 'NFL') ? safeAway : (strKey.includes('202610203') ? 'SEA' : 'BAL');
+  const home = (safeHome && safeHome !== 'NFL') ? safeHome : (strKey.includes('202610203') ? 'NE' : 'KC');
   return generateGamePlays(strKey, away, home, status);
 }

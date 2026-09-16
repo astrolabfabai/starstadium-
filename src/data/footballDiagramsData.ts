@@ -3,7 +3,7 @@ import { FootballPlayConcept, QuarterbackSprayProfile, TeamEpaRecord, PersonnelE
 export const FOOTBALL_PLAYS: FootballPlayConcept[] = [
   {
     id: 'four-verticals',
-    name: 'Animation #1 • Four Verticals ("60 Go")',
+    name: 'Play #1 • Four Verticals ("60 Go")',
     category: 'Pass',
     personnel: '11 Personnel (3 WR, 1 TE, 1 RB)',
     formation: 'Shotgun 2x2 Open Spread',
@@ -56,7 +56,7 @@ export const FOOTBALL_PLAYS: FootballPlayConcept[] = [
   },
   {
     id: 'mesh-crossing',
-    name: 'Animation #2 • Mesh Concept ("92 Cross")',
+    name: 'Play #2 • Mesh Concept ("92 Cross")',
     category: 'Pass',
     personnel: '11 Personnel (3 WR, 1 TE, 1 RB)',
     formation: 'Shotgun 3x1 Trips Right',
@@ -105,7 +105,7 @@ export const FOOTBALL_PLAYS: FootballPlayConcept[] = [
   },
   {
     id: 'pa-bootleg-wheel',
-    name: 'Animation #3 • Play-Action Bootleg & Wheel ("Naked 7")',
+    name: 'Play #3 • Play-Action Bootleg & Wheel ("Naked 7")',
     category: 'Play Action',
     personnel: '12 Personnel (2 TE, 2 WR, 1 RB)',
     formation: 'Pistol Heavy 2-TE Left',
@@ -154,7 +154,7 @@ export const FOOTBALL_PLAYS: FootballPlayConcept[] = [
   },
   {
     id: 'inside-zone-rpo',
-    name: 'Animation #4 • Inside Zone RPO Bubble ("Read Stick")',
+    name: 'Play #4 • Inside Zone RPO Bubble ("Read Stick")',
     category: 'RPO',
     personnel: '11 Personnel (3 WR, 1 TE, 1 RB)',
     formation: 'Shotgun Offset Left',
@@ -202,7 +202,7 @@ export const FOOTBALL_PLAYS: FootballPlayConcept[] = [
   },
   {
     id: 'smash-fade-redzone',
-    name: 'Animation #5 • Red Zone Smash & High-Low Fade',
+    name: 'Play #5 • Red Zone Smash & High-Low Fade',
     category: 'Pass',
     personnel: '11 Personnel (3 WR, 1 TE, 1 RB)',
     formation: 'Shotgun Bunch Right Compressed',
@@ -448,7 +448,15 @@ export function getPlayTacticalConcept(play?: PlayByPlayEvent | null): FootballP
   }
 
   if (play.customTacticalConcept) {
-    return play.customTacticalConcept;
+    return {
+      ...play.customTacticalConcept,
+      offensiveNodes: Array.isArray(play.customTacticalConcept.offensiveNodes) ? play.customTacticalConcept.offensiveNodes : FOOTBALL_PLAYS[0].offensiveNodes,
+      defensiveNodes: Array.isArray(play.customTacticalConcept.defensiveNodes) ? play.customTacticalConcept.defensiveNodes : FOOTBALL_PLAYS[0].defensiveNodes,
+      progression: Array.isArray(play.customTacticalConcept.progression) ? play.customTacticalConcept.progression : FOOTBALL_PLAYS[0].progression,
+      keys: Array.isArray(play.customTacticalConcept.keys) ? play.customTacticalConcept.keys : FOOTBALL_PLAYS[0].keys,
+      losYard: typeof play.customTacticalConcept.losYard === 'number' ? play.customTacticalConcept.losYard : 35,
+      firstDownYard: typeof play.customTacticalConcept.firstDownYard === 'number' ? play.customTacticalConcept.firstDownYard : 45
+    };
   }
 
   const desc = (play.Description || '').toLowerCase();
@@ -521,7 +529,7 @@ export function getPlayTacticalConcept(play?: PlayByPlayEvent | null): FootballP
             ? [{ x: losYard - 2, y: runnerY }, { x: losYard + 6, y: runnerY - 4 }, { x: targetGainYard, y: runnerY - 6 }]
             : [{ x: losYard - 1, y: runnerY }, { x: losYard + 4, y: runnerY }, { x: targetGainYard, y: runnerY }],
           passTarget: true,
-          actionText: `Primary Ball Carrier (+${play.YardsGained} yds)`
+          actionText: `Primary Ball Carrier (+${yardsGained} yds)`
         },
         { id: 'lt', label: 'LT', position: 'LT', role: 'OL', startX: losYard, startY: 20, routePath: [{ x: losYard + 1.5, y: 19 }] },
         { id: 'lg', label: 'LG', position: 'LG', role: 'OL', startX: losYard, startY: 23, routePath: [{ x: losYard + 2, y: 22 }] },

@@ -135,10 +135,10 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
   const [currentYardLine, setCurrentYardLine] = useState<number>(14); // Ball on opponent's 14 yard line (Red zone)
   const [currentDown, setCurrentDown] = useState<number>(3);
   const [distanceToGo, setDistanceToGo] = useState<number>(4);
-  const [simulatedPlays, setSimulatedPlays] = useState(stats.currentDrivePlays);
+  const currentPlays = stats.currentDrivePlays;
   const [isRedZoneActive, setIsRedZoneActive] = useState<boolean>(true);
   const [driveYardsGained, setDriveYardsGained] = useState<number>(61);
-  const [drivePlaysCount, setDrivePlaysCount] = useState<number>(simulatedPlays.length);
+  const drivePlaysCount = currentPlays.length;
   const [activePossession, setActivePossession] = useState<string>(game.possession || game.homeTeam.abbreviation);
 
   // Google AI Telemetry Analysis State
@@ -200,74 +200,13 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
     }
   };
 
-  // Simulate Next Play inside the live drive
-  const handleSimulateNextPlay = () => {
-    const possibleGains = [2, 5, 8, 12, -2, 0, 14];
-    const gain = possibleGains[Math.floor(Math.random() * possibleGains.length)];
-    let newYardLine = currentYardLine - gain;
-
-    if (newYardLine <= 0) {
-      // Touchdown!
-      const tdPlay = {
-        playNumber: drivePlaysCount + 1,
-        downDistance: `${currentDown} & ${distanceToGo} at OPP ${currentYardLine}`,
-        description: `TOUCHDOWN ${activePossession}! Pass over the middle for ${currentYardLine} yds score!`,
-        yards: currentYardLine,
-        isRedZone: true,
-        time: '01:50'
-      };
-      setSimulatedPlays([tdPlay, ...simulatedPlays]);
-      setDriveYardsGained(driveYardsGained + currentYardLine);
-      setDrivePlaysCount(drivePlaysCount + 1);
-      setCurrentYardLine(0);
-      setCurrentDown(1);
-      setDistanceToGo(10);
-      return;
-    }
-
-    if (newYardLine > 99) newYardLine = 99;
-
-    let nextDown = currentDown;
-    let nextDist = distanceToGo - gain;
-
-    if (gain >= distanceToGo) {
-      // First down conversion!
-      nextDown = 1;
-      nextDist = Math.min(10, newYardLine);
-    } else {
-      nextDown = (currentDown % 4) + 1;
-      if (nextDown === 1) {
-        nextDist = 10; // Turnover on downs reset
-      }
-    }
-
-    const newPlay = {
-      playNumber: drivePlaysCount + 1,
-      downDistance: `${currentDown} & ${distanceToGo} at OPP ${currentYardLine}`,
-      description: gain > 0 ? `Rush/Pass gain of ${gain} yds to the ${newYardLine}-yd line` : (gain === 0 ? `Incomplete pass` : `Tackled for loss of ${Math.abs(gain)} yds`),
-      yards: gain,
-      isRedZone: newYardLine <= 20,
-      time: '01:58'
-    };
-
-    setSimulatedPlays([newPlay, ...simulatedPlays]);
-    setCurrentYardLine(newYardLine);
-    setCurrentDown(nextDown);
-    setDistanceToGo(nextDist);
-    setDriveYardsGained(driveYardsGained + Math.max(0, gain));
-    setDrivePlaysCount(drivePlaysCount + 1);
-    setIsRedZoneActive(newYardLine <= 20);
-  };
-
   // Reset drive
   const handleResetDrive = () => {
     setCurrentYardLine(14);
     setCurrentDown(3);
     setDistanceToGo(4);
     setDriveYardsGained(61);
-    setDrivePlaysCount(5);
     setIsRedZoneActive(true);
-    setSimulatedPlays(stats.currentDrivePlays);
   };
 
   // Toggle Possession team
@@ -349,7 +288,7 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Drive Plays ({simulatedPlays.length})
+              Drive Plays ({currentPlays.length})
             </button>
             {aiAnalysis && (
               <button
@@ -425,16 +364,14 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
           </div>
 
           {/* Endzones */}
-          <div className="absolute left-0 top-0 bottom-0 w-[7%] bg-blue-900/60 border-r-2 border-white/40 flex flex-col items-center justify-center gap-1 p-0.5">
-            <TeamLogo teamKey={game.awayTeam.abbreviation} size="xs" shape="circle" showBackground={false} />
-            <span className="text-[9px] sm:text-[10px] font-black text-blue-300/80 -rotate-90 tracking-widest font-mono">
+          <div className="absolute left-0 top-0 bottom-0 w-[7%] bg-blue-900/60 border-r-2 border-white/40 flex flex-col items-center justify-center p-0.5">
+            <span className="text-[10px] sm:text-[11px] font-black text-blue-200/90 -rotate-90 tracking-widest font-mono">
               {game.awayTeam.abbreviation}
             </span>
           </div>
 
-          <div className="absolute right-0 top-0 bottom-0 w-[7%] bg-rose-900/70 border-l-2 border-white/40 flex flex-col items-center justify-center gap-1 p-0.5">
-            <TeamLogo teamKey={game.homeTeam.abbreviation} size="xs" shape="circle" showBackground={false} />
-            <span className="text-[9px] sm:text-[10px] font-black text-rose-300/90 -rotate-90 tracking-widest font-mono">
+          <div className="absolute right-0 top-0 bottom-0 w-[7%] bg-rose-900/70 border-l-2 border-white/40 flex flex-col items-center justify-center p-0.5">
+            <span className="text-[10px] sm:text-[11px] font-black text-rose-200/90 -rotate-90 tracking-widest font-mono">
               {game.homeTeam.abbreviation}
             </span>
           </div>
@@ -508,18 +445,9 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
           </div>
         </div>
 
-        {/* Interactive Drive Simulator Controls */}
+        {/* Real-time Drive Tracking Controls */}
         <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={handleSimulateNextPlay}
-              className="px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px] flex items-center gap-1 shadow-xs transition-all"
-              title="Simulate the next play in this active drive"
-            >
-              <Play className="w-3 h-3 fill-current" />
-              <span>Simulate Next Play</span>
-            </button>
-
             <button
               onClick={handleTogglePossession}
               className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-[11px] flex items-center gap-1 transition-all"
@@ -845,11 +773,11 @@ export const LivePossessionRedZoneStats: React.FC<LivePossessionRedZoneStatsProp
               <Activity className="w-4 h-4 text-emerald-400" />
               <span>Current Drive Play-by-Play Timeline</span>
             </div>
-            <span className="text-xs font-mono text-slate-400">{simulatedPlays.length} Plays Total</span>
+            <span className="text-xs font-mono text-slate-400">{currentPlays.length} Plays Total</span>
           </div>
 
           <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-            {simulatedPlays.map((play, idx) => (
+            {currentPlays.map((play, idx) => (
               <div
                 key={idx}
                 className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono ${

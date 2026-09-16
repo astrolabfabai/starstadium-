@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FootballPlayConcept, FootballPlayerNode, PlayByPlayEvent } from '../../types';
 import { Play, Pause, RotateCcw, Target, Shield, Zap, Sparkles, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { getTeamIdentity, getTeamLogoUrl, normalizeTeamKey, resolveTeamSvgLogo, NFL_TEAM_SVG_LOGOS } from '../../utils/teamUtils';
@@ -85,13 +85,62 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
     return () => clearInterval(interval);
   }, [activeAnimating, animationSpeed]);
 
+  // Safe play concept with complete defaults
+  const safeConcept: FootballPlayConcept = useMemo(() => {
+    if (playConcept) {
+      return {
+        ...playConcept,
+        losYard: typeof playConcept.losYard === 'number' ? playConcept.losYard : 35,
+        firstDownYard: typeof playConcept.firstDownYard === 'number' ? playConcept.firstDownYard : 45,
+        offensiveNodes: Array.isArray(playConcept.offensiveNodes) ? playConcept.offensiveNodes : [],
+        defensiveNodes: Array.isArray(playConcept.defensiveNodes) ? playConcept.defensiveNodes : [],
+        name: playConcept.name || 'Tactical Play Action',
+        formation: playConcept.formation || 'Shotgun 2x2',
+        personnel: playConcept.personnel || '11 Personnel',
+        defensiveCoverage: playConcept.defensiveCoverage || 'Cover 3 Sky',
+        description: playConcept.description || 'Offensive play execution.'
+      };
+    }
+    return {
+      id: 'fallback-concept',
+      name: 'Tactical Play Action',
+      category: 'Pass',
+      personnel: '11 Personnel',
+      formation: 'Shotgun 2x2 Spread',
+      defensiveCoverage: 'Cover 3 Sky',
+      description: 'Offensive play scheme execution.',
+      keys: ['Rhythm drop and read progression.'],
+      progression: ['1. Primary target', '2. Checkdown'],
+      emoji: '🏈',
+      losYard: 35,
+      firstDownYard: 45,
+      offensiveNodes: [
+        { id: 'qb', label: 'QB', position: 'QB', role: 'QB', startX: 30, startY: 26.6, routePath: [{ x: 30, y: 26.6 }], actionText: 'Pocket Set' },
+        { id: 'wr1', label: 'WR1', position: 'WR', role: 'WR', startX: 35, startY: 10, routePath: [{ x: 50, y: 10 }], passTarget: true, actionText: 'Primary Route' }
+      ],
+      defensiveNodes: [
+        { id: 'cb1', label: 'CB1', position: 'CB', role: 'CB', startX: 42, startY: 10 }
+      ]
+    };
+  }, [playConcept]);
+
+  const offensiveNodes = safeConcept.offensiveNodes.length > 0
+    ? safeConcept.offensiveNodes
+    : [
+        { id: 'qb', label: 'QB', position: 'QB', role: 'QB', startX: 30, startY: 26.6, routePath: [{ x: 30, y: 26.6 }], actionText: 'Pocket Set' },
+        { id: 'wr1', label: 'WR1', position: 'WR', role: 'WR', startX: 35, startY: 10, routePath: [{ x: 50, y: 10 }], passTarget: true, actionText: 'Primary Route' }
+      ];
+
+  const defensiveNodes = safeConcept.defensiveNodes;
+
   // Compute primary target node or ball carrier
   const primaryTargetNode =
-    playConcept.offensiveNodes.find((n) => n.passTarget) ||
-    playConcept.offensiveNodes.find((n) => n.role === 'WR' || n.role === 'TE' || n.role === 'RB') ||
-    playConcept.offensiveNodes[0];
+    offensiveNodes.find((n) => n.passTarget) ||
+    offensiveNodes.find((n) => n.role === 'WR' || n.role === 'TE' || n.role === 'RB') ||
+    offensiveNodes[0] ||
+    { id: 'target', label: 'Target', position: 'WR', role: 'WR', startX: 35, startY: 10, routePath: [{ x: 50, y: 10 }], passTarget: true, actionText: 'Primary Route' };
 
-  const qbNode = playConcept.offensiveNodes.find((n) => n.role === 'QB') || playConcept.offensiveNodes[0];
+  const qbNode = offensiveNodes.find((n) => n.role === 'QB') || offensiveNodes[0] || { id: 'qb', label: 'QB', position: 'QB', role: 'QB', startX: 30, startY: 26.6, routePath: [{ x: 30, y: 26.6 }] };
 
   // Dynamically resolve home & away team from props or active play/game context
   const extractTeamKeyOrName = (input?: any): string => {
@@ -161,7 +210,7 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
   // Calculate ball coordinates along trajectory
   const getBallPosition = () => {
     if (!qbNode || !primaryTargetNode || !primaryTargetNode.routePath || primaryTargetNode.routePath.length === 0) {
-      return { x: playConcept.losYard, y: 26.6 };
+      return { x: safeConcept.losYard, y: 26.6 };
     }
     const startX = qbNode.startX;
     const startY = qbNode.startY;
@@ -176,12 +225,12 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
   };
 
   const ballPos = getBallPosition();
-  const activeNode = [...playConcept.offensiveNodes, ...playConcept.defensiveNodes].find(
+  const activeNode = [...offensiveNodes, ...defensiveNodes].find(
     (n) => n.id === activeNodeId
   );
 
-  const yardsGained = playEvent?.YardsGained ?? (playConcept.firstDownYard - playConcept.losYard);
-  const forwardProgressYard = Math.min(90, Math.max(10, playConcept.losYard + yardsGained));
+  const yardsGained = playEvent?.YardsGained ?? (safeConcept.firstDownYard - safeConcept.losYard);
+  const forwardProgressYard = Math.min(90, Math.max(10, safeConcept.losYard + yardsGained));
 
   return (
     <div className="bg-[#0b130e] border-2 border-emerald-600/40 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden flex flex-col space-y-4">
@@ -190,7 +239,7 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-3 pb-3 border-b border-emerald-500/20">
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-3xl shrink-0 p-2 rounded-xl bg-emerald-950/60 border border-emerald-500/30">
-              {playConcept.emoji || '🏈'}
+              {safeConcept.emoji || '🏈'}
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -215,10 +264,10 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
                 )}
               </div>
               <h3 className="text-base sm:text-lg font-extrabold text-white tracking-wide truncate mt-0.5">
-                {playConcept.name.replace(/&bull;/g, '•')}
+                {(safeConcept.name || 'Tactical Play Action').replace(/&bull;/g, '•')}
               </h3>
               <p className="text-xs text-emerald-400/90 font-mono truncate">
-                {playConcept.formation} &bull; {playConcept.personnel} &bull; <span className="text-rose-400">vs {playConcept.defensiveCoverage}</span>
+                {safeConcept.formation} &bull; {safeConcept.personnel} &bull; <span className="text-rose-400">vs {safeConcept.defensiveCoverage}</span>
               </p>
             </div>
           </div>
@@ -261,11 +310,11 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
                       ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-extrabold'
                       : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
                   }`}
-                  title={activeAnimating ? 'Pause Route Animation' : 'Start Route Animation'}
-                  aria-label={activeAnimating ? 'Pause Route Animation' : 'Start Route Animation'}
+                  title={activeAnimating ? 'Pause Football Play' : 'Execute Football Play'}
+                  aria-label={activeAnimating ? 'Pause Football Play' : 'Execute Football Play'}
                 >
                   {activeAnimating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{activeAnimating ? 'Routes Live' : 'Play Routes'}</span>
+                  <span>{activeAnimating ? 'Executing Play' : 'Run Play'}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -321,69 +370,18 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
             x="5"
             y="27"
             fill="#ffffff"
-            fillOpacity="0.4"
-            fontSize="4.5"
+            fillOpacity="0.5"
+            fontSize="5"
             fontWeight="900"
             textAnchor="middle"
             transform="rotate(-90 5 27)"
-            letterSpacing="2"
+            letterSpacing="3"
             data-team={effectiveHome}
-            data-team-logo={homeSvgLogo}
             data-testid="endzone-team-text"
             className="home-endzone-text"
           >
             {homeTeamName}
-            {/* Team-specific SVG logo asset rendered within the <text> element node (matching svg.w-full > text:nth-child(4)) */}
-            <image
-              href={homeSvgLogo}
-              xlinkHref={homeSvgLogo}
-              x="1.5"
-              y="5"
-              width="7"
-              height="7"
-              preserveAspectRatio="xMidYMid meet"
-              data-team-logo={homeSvgLogo}
-              data-team={effectiveHome}
-              className="team-svg-logo-asset"
-            />
-            <svg
-              x="1.5"
-              y="5"
-              width="7"
-              height="7"
-              viewBox="0 0 100 100"
-              data-team-logo={homeSvgLogo}
-              className="team-svg-logo-node"
-            >
-              <image
-                href={homeSvgLogo}
-                xlinkHref={homeSvgLogo}
-                width="100"
-                height="100"
-                preserveAspectRatio="xMidYMid meet"
-              />
-            </svg>
           </text>
-          {homeSvgLogo && (
-            <g className="home-endzone-logos" opacity="0.9">
-              <image
-                href={homeSvgLogo}
-                x="1.5"
-                y="5"
-                width="7"
-                height="7"
-                preserveAspectRatio="xMidYMid meet"
-              />
-              <image
-                href={homeSvgLogo}
-                x="1.5"
-                y="41.3"
-                width="7"
-                height="7"
-                preserveAspectRatio="xMidYMid meet"
-              />
-            </g>
-          )}
 
           {/* Right Endzone (90 - 100) */}
           <rect x="90" y="0" width="10" height="53.3" fill="url(#ezRightGrad)" />
@@ -391,69 +389,18 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
             x="95"
             y="27"
             fill="#ffffff"
-            fillOpacity="0.4"
-            fontSize="4.5"
+            fillOpacity="0.5"
+            fontSize="5"
             fontWeight="900"
             textAnchor="middle"
             transform="rotate(90 95 27)"
-            letterSpacing="2"
+            letterSpacing="3"
             data-team={effectiveAway}
-            data-team-logo={awaySvgLogo}
             data-testid="away-endzone-text"
             className="away-endzone-text"
           >
             {awayTeamName}
-            {/* Team-specific SVG logo asset rendered within away <text> element node */}
-            <image
-              href={awaySvgLogo}
-              xlinkHref={awaySvgLogo}
-              x="91.5"
-              y="5"
-              width="7"
-              height="7"
-              preserveAspectRatio="xMidYMid meet"
-              data-team-logo={awaySvgLogo}
-              data-team={effectiveAway}
-              className="team-svg-logo-asset"
-            />
-            <svg
-              x="91.5"
-              y="5"
-              width="7"
-              height="7"
-              viewBox="0 0 100 100"
-              data-team-logo={awaySvgLogo}
-              className="team-svg-logo-node"
-            >
-              <image
-                href={awaySvgLogo}
-                xlinkHref={awaySvgLogo}
-                width="100"
-                height="100"
-                preserveAspectRatio="xMidYMid meet"
-              />
-            </svg>
           </text>
-          {awaySvgLogo && (
-            <g className="away-endzone-logos" opacity="0.9">
-              <image
-                href={awaySvgLogo}
-                x="91.5"
-                y="5"
-                width="7"
-                height="7"
-                preserveAspectRatio="xMidYMid meet"
-              />
-              <image
-                href={awaySvgLogo}
-                x="91.5"
-                y="41.3"
-                width="7"
-                height="7"
-                preserveAspectRatio="xMidYMid meet"
-              />
-            </g>
-          )}
 
           {/* 5-Yard & 10-Yard Yard Lines */}
           {[10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90].map((x) => (
@@ -515,9 +462,9 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
           {/* Forward Progress / Yardage Gained Highlight Box */}
           {yardsGained > 0 && (
             <rect
-              x={Math.min(playConcept.losYard, forwardProgressYard)}
+              x={Math.min(safeConcept.losYard, forwardProgressYard)}
               y="2"
-              width={Math.abs(forwardProgressYard - playConcept.losYard)}
+              width={Math.abs(forwardProgressYard - safeConcept.losYard)}
               height="49.3"
               fill={yardsGained >= 15 ? '#f59e0b' : '#10b981'}
               fillOpacity="0.15"
@@ -529,35 +476,35 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
 
           {/* Line of Scrimmage (Blue) */}
           <line
-            x1={playConcept.losYard}
+            x1={safeConcept.losYard}
             y1="0"
-            x2={playConcept.losYard}
+            x2={safeConcept.losYard}
             y2="53.3"
             stroke="#38bdf8"
             strokeWidth="0.5"
             strokeDasharray="1.5 0.8"
           />
-          <rect x={playConcept.losYard - 4.5} y="1" width="9" height="2.2" rx="0.5" fill="#0284c7" fillOpacity="0.85" />
-          <text x={playConcept.losYard} y="2.6" fill="#ffffff" fontSize="1.2" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">
+          <rect x={safeConcept.losYard - 4.5} y="1" width="9" height="2.2" rx="0.5" fill="#0284c7" fillOpacity="0.85" />
+          <text x={safeConcept.losYard} y="2.6" fill="#ffffff" fontSize="1.2" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">
             SCRIMMAGE
           </text>
 
           {/* Line to Gain / 1st Down (Yellow) */}
           <line
-            x1={playConcept.firstDownYard}
+            x1={safeConcept.firstDownYard}
             y1="0"
-            x2={playConcept.firstDownYard}
+            x2={safeConcept.firstDownYard}
             y2="53.3"
             stroke="#eab308"
             strokeWidth="0.55"
           />
-          <rect x={playConcept.firstDownYard - 4.5} y="50" width="9" height="2.2" rx="0.5" fill="#ca8a04" fillOpacity="0.9" />
-          <text x={playConcept.firstDownYard} y="51.6" fill="#000000" fontSize="1.2" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">
+          <rect x={safeConcept.firstDownYard - 4.5} y="50" width="9" height="2.2" rx="0.5" fill="#ca8a04" fillOpacity="0.9" />
+          <text x={safeConcept.firstDownYard} y="51.6" fill="#000000" fontSize="1.2" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">
             1ST DOWN
           </text>
 
           {/* Animated Offensive Play Routes */}
-          {playConcept.offensiveNodes.map((node) => {
+          {offensiveNodes.map((node) => {
             if (!node.routePath || node.routePath.length === 0) return null;
 
             const isSelected = activeNodeId === node.id;
@@ -604,7 +551,7 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
           )}
 
           {/* Offensive Players (Circles) */}
-          {playConcept.offensiveNodes.map((node) => {
+          {offensiveNodes.map((node) => {
             const isSelected = activeNodeId === node.id;
             return (
               <g
@@ -629,14 +576,14 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
                   textAnchor="middle"
                   fontFamily="sans-serif"
                 >
-                  {node.label.split(' ')[0]}
+                  {(node.label ? String(node.label) : '').split(' ')[0]}
                 </text>
               </g>
             );
           })}
 
           {/* Defensive Players (Crimson Circles) */}
-          {playConcept.defensiveNodes.map((node) => {
+          {defensiveNodes.map((node) => {
             const isSelected = activeNodeId === node.id;
             return (
               <g
@@ -661,7 +608,7 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
                   textAnchor="middle"
                   fontFamily="sans-serif"
                 >
-                  {node.label.split(' ')[0]}
+                  {(node.label ? String(node.label) : '').split(' ')[0]}
                 </text>
               </g>
             );
@@ -710,8 +657,8 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
               </div>
             ) : (
               <div className="space-y-1">
-                <p className="text-white font-bold">{primaryTargetNode.label} ({primaryTargetNode.position})</p>
-                <p className="text-emerald-400 font-mono text-[11px]">{primaryTargetNode.actionText || 'Primary Progression Route'}</p>
+                <p className="text-white font-bold">{primaryTargetNode?.label || 'Target'} ({primaryTargetNode?.position || 'WR'})</p>
+                <p className="text-emerald-400 font-mono text-[11px]">{primaryTargetNode?.actionText || 'Primary Progression Route'}</p>
                 <p className="text-[10px] text-slate-400 italic">Click any player circle to inspect individual assignment.</p>
               </div>
             )}
@@ -723,8 +670,8 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-500" /> QB Read Progression
             </h4>
             <div className="space-y-1 font-mono text-[11px] text-slate-300">
-              {playConcept.progression && playConcept.progression.length > 0 ? (
-                playConcept.progression.slice(0, 3).map((step, idx) => (
+              {safeConcept.progression && safeConcept.progression.length > 0 ? (
+                safeConcept.progression.slice(0, 3).map((step, idx) => (
                   <div key={idx} className="truncate">
                     <span className="text-amber-500 font-bold">{idx + 1}.</span> {step.replace(/^\d+\.\s*/, '')}
                   </div>
@@ -741,7 +688,7 @@ export const GridironTacticalCanvas: React.FC<GridironTacticalCanvasProps> = ({
               <Shield className="w-3.5 h-3.5 text-emerald-400" /> Scheme Notes & Keys
             </h4>
             <p className="text-slate-300 text-[11px] leading-relaxed line-clamp-3">
-              {playConcept.description}
+              {safeConcept.description}
             </p>
           </div>
         </div>

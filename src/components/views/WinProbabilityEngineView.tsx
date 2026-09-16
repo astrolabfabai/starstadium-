@@ -34,7 +34,8 @@ import {
   Calendar,
   Layers,
   Sliders,
-  AlertTriangle
+  AlertTriangle,
+  Share2
 } from 'lucide-react';
 
 interface WinProbabilityEngineViewProps {
@@ -82,12 +83,7 @@ export const WinProbabilityEngineView: React.FC<WinProbabilityEngineViewProps> =
   // Chart & Telemetry State
   const [selectedPlayId, setSelectedPlayId] = useState<number | null>(null);
   const [showEpaOverlay, setShowEpaOverlay] = useState<boolean>(false);
-  const [isSimulatingLive, setIsSimulatingLive] = useState<boolean>(false);
-  const [simulationSpeed, setSimulationSpeed] = useState<number>(1);
   const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
-
-  // Dynamic simulated plays on top of base feed
-  const [injectedPlays, setInjectedPlays] = useState<PlayByPlayEvent[]>([]);
 
   // 1. Ingest Game Feeds from Server / SportsData / ESPN / Mock
   const fetchGameFeed = async () => {
@@ -187,20 +183,21 @@ export const WinProbabilityEngineView: React.FC<WinProbabilityEngineViewProps> =
     fetchGameFeed();
   }, [selectedSeason]);
 
-  // Auto-polling interval
+  const hasLiveGames = games.some((g) => g.status === 'InProgress');
+
+  // Auto-polling interval: STRICTLY refresh live games only in background
   useEffect(() => {
-    if (!isAutoPolling) return;
+    if (!hasLiveGames) return;
     const interval = setInterval(() => {
       fetchGameFeed();
-    }, pollIntervalSec * 1000);
+    }, 15000);
     return () => clearInterval(interval);
-  }, [isAutoPolling, pollIntervalSec, selectedSeason]);
+  }, [hasLiveGames, selectedSeason]);
 
   // Synchronize when parent passes selectedGameKey
   useEffect(() => {
     if (initialSelectedGameKey && initialSelectedGameKey !== selectedGameKey) {
       setSelectedGameKey(initialSelectedGameKey);
-      setInjectedPlays([]);
       setSelectedPlayId(null);
     }
   }, [initialSelectedGameKey]);
@@ -242,22 +239,17 @@ export const WinProbabilityEngineView: React.FC<WinProbabilityEngineViewProps> =
     );
   }, [activeGame.gameKey, activeGame.awayTeam, activeGame.homeTeam, activeGame.status]);
 
-  // Combined plays (base feed + user simulated what-if plays)
-  const allGamePlays = useMemo(() => {
-    return [...basePlays, ...injectedPlays];
-  }, [basePlays, injectedPlays]);
-
-  // Process plays into Win Probability Points
+  // Process plays into Win Probability Points directly from authentic base feed
   const winProbPoints = useMemo(() => {
     return processGameFeedToWinProbPoints(
-      allGamePlays,
+      basePlays,
       activeGame.homeTeam,
       activeGame.awayTeam,
       activeGame.homeScore,
       activeGame.awayScore,
       parseFloat(activeGame.spread) || -3.5
     );
-  }, [allGamePlays, activeGame]);
+  }, [basePlays, activeGame]);
 
   // Comprehensive Game Telemetry Summary
   const winProbSummary = useMemo<GameWinProbSummary>(() => {
@@ -283,117 +275,6 @@ export const WinProbabilityEngineView: React.FC<WinProbabilityEngineViewProps> =
     });
   }, [games, selectedWeekFilter, gameStatusFilter]);
 
-  // Live Auto-Simulation Ticker
-  useEffect(() => {
-    if (!isSimulatingLive) return;
-
-    const timer = setInterval(() => {
-      setInjectedPlays((prev) => {
-        const lastPlay = prev.length > 0 ? prev[prev.length - 1] : basePlays[basePlays.length - 1];
-        const newPlayId = (lastPlay?.PlayID || 8000) + 1;
-        const currentQtr = lastPlay?.Quarter || 4;
-        const [mStr, sStr] = (lastPlay?.TimeRemaining || '01:45').split(':');
-        let m = parseInt(mStr, 10) || 1;
-        let s = parseInt(sStr, 10) || 30;
-
-        s -= 25;
-        if (s < 0) {
-          m -= 1;
-          s += 60;
-        }
-        if (m < 0) {
-          m = 0;
-          s = 0;
-          setIsSimulatingLive(false);
-        }
-
-        const timeRemaining = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        const isHome = (prev.length % 2 === 0);
-        const simPossession = isHome ? activeGame.homeTeam : activeGame.awayTeam;
-        const yards = Math.floor(Math.random() * 15) - 2;
-
-        const simulatedPlay: PlayByPlayEvent = {
-          PlayID: newPlayId,
-          GameID: parseInt(activeGame.gameKey, 10) || 202610101,
-          Quarter: currentQtr,
-          TimeRemaining: timeRemaining,
-          Possession: simPossession,
-          Down: Math.floor(Math.random() * 3) + 1,
-          Distance: 10,
-          YardLine: Math.floor(Math.random() * 40) + 20,
-          YardLineSide: isHome ? activeGame.awayTeam : activeGame.homeTeam,
-          PlayType: yards > 10 ? 'Pass' : 'Run',
-          YardsGained: yards,
-          Description: `(${timeRemaining}) [SIMULATED LIVE PLAY] ${simPossession} ball: ${yards >= 0 ? `Gain of ${yards} yards` : `Loss of ${Math.abs(yards)} yards`}. Clock rolling.`,
-          IsBigPlay: yards >= 12,
-          WinProbabilityPct: Math.max(1, Math.min(99, (lastPlay?.WinProbabilityPct || 50) + (isHome ? yards * 0.8 : -yards * 0.8))),
-          epa: yards * 0.12
-        };
-
-        return [...prev, simulatedPlay];
-      });
-    }, 2500 / simulationSpeed);
-
-    return () => clearInterval(timer);
-  }, [isSimulatingLive, simulationSpeed, basePlays, activeGame]);
-
-  // Simulate what-if scenario buttons
-  const handleSimulateScenario = (scenario: 'TD' | 'TURNOVER' | 'FG' | 'STOP') => {
-    const lastPlay = allGamePlays[allGamePlays.length - 1];
-    const newPlayId = (lastPlay?.PlayID || 9000) + 1;
-    const simPossession = activeGame.homeTeam;
-
-    let desc = '';
-    let delta = 0;
-    let epaVal = 0;
-    let isBig = true;
-    let isScore = false;
-
-    if (scenario === 'TD') {
-      desc = `(01:15) (Shotgun) TOUCHDOWN! ${activeGame.homeTeam} strikes deep on a 42-yard game-winning strike into the end zone!`;
-      delta = 28.5;
-      epaVal = 4.12;
-      isScore = true;
-    } else if (scenario === 'TURNOVER') {
-      desc = `(01:15) (Shotgun) INTERCEPTED! Pass intended for boundary receiver picked off by ${activeGame.awayTeam}! Huge takeaway!`;
-      delta = -34.2;
-      epaVal = -4.5;
-    } else if (scenario === 'FG') {
-      desc = `(00:03) 48-yard Field Goal attempt by ${activeGame.homeTeam} is UP and GOOD!`;
-      delta = 22.0;
-      epaVal = 2.8;
-      isScore = true;
-    } else if (scenario === 'STOP') {
-      desc = `(00:45) 4th & 2 run stuffed at the line of scrimmage for NO GAIN! TURNOVER ON DOWNS!`;
-      delta = -26.5;
-      epaVal = -3.2;
-    }
-
-    const currentWp = activePoint?.homeWinPct || 50;
-    const newWp = Math.max(0.5, Math.min(99.5, currentWp + delta));
-
-    const newPlay: PlayByPlayEvent = {
-      PlayID: newPlayId,
-      GameID: parseInt(activeGame.gameKey, 10) || 202610101,
-      Quarter: 4,
-      TimeRemaining: '00:58',
-      Possession: simPossession,
-      Down: 4,
-      Distance: 2,
-      YardLine: 28,
-      YardLineSide: activeGame.awayTeam,
-      PlayType: isScore ? 'Touchdown' : 'Pass',
-      YardsGained: 25,
-      Description: desc,
-      IsBigPlay: isBig,
-      WinProbabilityPct: newWp,
-      epa: epaVal
-    };
-
-    setInjectedPlays((prev) => [...prev, newPlay]);
-    setSelectedPlayId(newPlayId);
-  };
-
   const handleCopySummary = () => {
     const text = `NFL Win Probability Telemetry: ${activeGame.awayTeam} (${activeGame.awayScore}) @ ${activeGame.homeTeam} (${activeGame.homeScore})
 Current Win Prob: ${activeGame.homeTeam} ${winProbSummary.currentHomeWinPct}% | ${activeGame.awayTeam} ${winProbSummary.currentAwayWinPct}%
@@ -408,7 +289,6 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
 
   const handleGameCardClick = (gameKey: string) => {
     setSelectedGameKey(gameKey);
-    setInjectedPlays([]);
     setSelectedPlayId(null);
     if (onSelectGameKey) {
       onSelectGameKey(gameKey);
@@ -888,97 +768,62 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
         </div>
       </div>
 
-      {/* 7. Interactive Live Play Simulation & What-If Sandbox */}
-      <div className="bg-[#121216] border border-amber-500/25 rounded-xl p-3 sm:p-3.5 shadow-md space-y-2.5">
+      {/* 7. Real-Time Game Telemetry & Probability Drivers */}
+      <div className="bg-[#121216] border border-sky-500/25 rounded-xl p-3 sm:p-3.5 shadow-md space-y-2.5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2">
           <div>
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
               <h3 className="text-xs font-bold text-white uppercase font-mono tracking-wider">
-                Live Simulation & What-If Scenario Sandbox
+                Live Win Probability Critical Swing Plays
               </h3>
             </div>
             <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-              Inject live simulated events or toggle auto-tick to watch real-time probability curve shifts.
+              Official game events driving maximum win probability delta (WPA) based on live play telemetry.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Auto Play Continuous Clock */}
-            <button
-              onClick={() => setIsSimulatingLive(!isSimulatingLive)}
-              className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-1.5 transition ${
-                isSimulatingLive
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm'
-                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-              }`}
-            >
-              {isSimulatingLive ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              <span>{isSimulatingLive ? 'Pause Clock' : '▶️ Auto-Tick'}</span>
-            </button>
-
-            {/* Reset Sim Plays */}
-            {injectedPlays.length > 0 && (
-              <button
-                onClick={() => {
-                  setInjectedPlays([]);
-                  setSelectedPlayId(null);
-                  setIsSimulatingLive(false);
-                }}
-                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 text-[11px] font-mono font-bold flex items-center gap-1.5 transition"
-              >
-                <RotateCcw className="w-3 h-3 text-amber-400" />
-                <span>Reset ({injectedPlays.length})</span>
-              </button>
-            )}
-          </div>
+          <button
+            onClick={handleCopySummary}
+            className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 text-[11px] font-mono font-bold flex items-center gap-1.5 transition"
+          >
+            <Share2 className="w-3 h-3 text-sky-400" />
+            <span>{copiedSummary ? 'Copied!' : 'Copy Telemetry'}</span>
+          </button>
         </div>
 
-        {/* Scenario Injection Buttons - Compact Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <button
-            onClick={() => handleSimulateScenario('TD')}
-            className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-left transition group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono text-emerald-400 uppercase font-bold">Touchdown</span>
-              <span className="text-[9px] font-mono font-bold text-emerald-400">+28%</span>
-            </div>
-            <div className="text-xs font-bold text-white mt-0.5 group-hover:text-emerald-300">+42yd Strike</div>
-          </button>
-
-          <button
-            onClick={() => handleSimulateScenario('TURNOVER')}
-            className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-left transition group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono text-rose-400 uppercase font-bold">Turnover</span>
-              <span className="text-[9px] font-mono font-bold text-rose-400">-34%</span>
-            </div>
-            <div className="text-xs font-bold text-white mt-0.5 group-hover:text-rose-300">Interception Pick</div>
-          </button>
-
-          <button
-            onClick={() => handleSimulateScenario('FG')}
-            className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-left transition group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono text-amber-400 uppercase font-bold">Field Goal</span>
-              <span className="text-[9px] font-mono font-bold text-amber-400">+22%</span>
-            </div>
-            <div className="text-xs font-bold text-white mt-0.5 group-hover:text-amber-300">48yd Clutch Kick</div>
-          </button>
-
-          <button
-            onClick={() => handleSimulateScenario('STOP')}
-            className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 text-left transition group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono text-purple-400 uppercase font-bold">4th Down Stop</span>
-              <span className="text-[9px] font-mono font-bold text-purple-400">-26%</span>
-            </div>
-            <div className="text-xs font-bold text-white mt-0.5 group-hover:text-purple-300">Turnover on Downs</div>
-          </button>
+        {/* Top Swing Plays Highlights */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {winProbSummary.topSwingPlays.slice(0, 4).map((play, idx) => {
+            const isHomeShift = play.deltaHomeWp > 0;
+            return (
+              <div
+                key={idx}
+                onClick={() => setSelectedPlayId(play.playId)}
+                className={`p-2 rounded-lg border cursor-pointer transition text-left ${
+                  selectedPlayId === play.playId
+                    ? 'bg-sky-500/15 border-sky-500/50 shadow-sm'
+                    : 'bg-white/5 border-white/10 hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-mono text-slate-400 uppercase font-bold">
+                    Q{play.quarter} • {play.timeRemaining}
+                  </span>
+                  <span
+                    className={`text-[9px] font-mono font-bold ${
+                      isHomeShift ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {isHomeShift ? `+${play.deltaHomeWp.toFixed(1)}%` : `${play.deltaHomeWp.toFixed(1)}%`}
+                  </span>
+                </div>
+                <div className="text-xs font-semibold text-white mt-1 line-clamp-2">
+                  {play.description}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

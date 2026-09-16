@@ -83,16 +83,15 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [dataSource, setDataSource] = useState<string>('SportsData.io Live Feeds');
   
-  // Auto-Refresh Configuration
+  // Auto-Refresh Configuration (disabled by default to prevent page autorefreshing)
   const [autoRefresh, setAutoRefresh] = useState<AutoRefreshConfig>({
-    isEnabled: true,
+    isEnabled: false,
     intervalSeconds: 20,
     lastRefreshTime: new Date().toISOString()
   });
   const [showRefreshSettings, setShowRefreshSettings] = useState<boolean>(false);
   const [countdownSeconds, setCountdownSeconds] = useState<number>(20);
 
-  const [isSimulatingClock, setIsSimulatingClock] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [selectedGameForModal, setSelectedGameForModal] = useState<any | null>(null);
   const [selectedGameIdForStats, setSelectedGameIdForStats] = useState<string | null>(null);
@@ -102,13 +101,32 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
   // Available interval choices for auto-refresh
   const refreshIntervalOptions = [5, 10, 15, 20, 30, 60];
 
+  // Helper to sort games with those playing "now" strictly at the top
+  const sortGamesPlayingNowFirst = (list: LiveScoreboardGame[]): LiveScoreboardGame[] => {
+    return [...list].sort((a, b) => {
+      const aLive = a.status === 'InProgress' || a.status === 'Halftime';
+      const bLive = b.status === 'InProgress' || b.status === 'Halftime';
+      if (aLive && !bLive) return -1; // playing now -> top
+      if (!aLive && bLive) return 1;
+
+      const aFinal = a.status === 'Final';
+      const bFinal = b.status === 'Final';
+      if (!aFinal && bFinal) return -1;
+      if (aFinal && !bFinal) return 1;
+
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      return timeA - timeB;
+    });
+  };
+
   // Fetch real-time scores from SportsData API endpoint
   const fetchLiveScores = async () => {
     try {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const url = '/api/sportsdata/scores/live';
+      const url = '/api/sportsdata/scores/live?week=1';
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`);
@@ -116,7 +134,10 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
 
       const data = await res.json();
       if (data.games && Array.isArray(data.games) && data.games.length > 0) {
-        setGames(data.games);
+        // Filter strictly to current week's games and place games playing "now" at top
+        const currentWeekGames = data.games.filter((g: any) => g.week === 1 || !g.week);
+        const sorted = sortGamesPlayingNowFirst(currentWeekGames);
+        setGames(sorted);
         setDataSource(
           data.source === 'sportsdata_io_live'
             ? 'SportsData.io Live Feed'
@@ -135,8 +156,9 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
       setErrorMessage('Using local SportsData cache');
     }
 
-    // High-Fidelity Fallback using mock data with live in-game metrics
-    const fallbackList: LiveScoreboardGame[] = SCHEDULES_DATA.map((g, idx) => {
+    // High-Fidelity Fallback strictly using CURRENT WEEK'S games (Week 1 of 2026)
+    const currentWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
+    const fallbackList: LiveScoreboardGame[] = currentWeekSchedules.map((g, idx) => {
       const isLive = g.Status === 'InProgress';
       const isFinal = g.Status === 'Final';
       const homeTeamInfo = NFL_TEAMS.find((t) => t.Key === g.HomeTeam);
@@ -182,7 +204,8 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
       };
     });
 
-    setGames(fallbackList);
+    const sortedFallback = sortGamesPlayingNowFirst(fallbackList);
+    setGames(sortedFallback);
     setIsLoading(false);
     setLastUpdated(new Date().toLocaleTimeString());
     setCountdownSeconds(autoRefresh.intervalSeconds);
@@ -193,62 +216,28 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
     fetchLiveScores();
   }, []);
 
-  // Auto-refresh countdown & ticker interval
+  // Auto-Refresh: Only auto-refresh in background when live games are actively playing
+  const hasLiveGames = games.some((g) => g.status === 'InProgress' || g.status === 'Halftime');
+
   useEffect(() => {
-    if (!autoRefresh.isEnabled) return;
+    if (!hasLiveGames) return;
 
     const timer = setInterval(() => {
-      setCountdownSeconds((prev) => {
-        if (prev <= 1) {
-          fetchLiveScores();
-          return autoRefresh.intervalSeconds;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      fetchLiveScores();
+    }, 15000); // 15 seconds live game score refresh
 
     return () => clearInterval(timer);
-  }, [autoRefresh.isEnabled, autoRefresh.intervalSeconds]);
+  }, [hasLiveGames]);
 
-  // In-Game Second-by-Second Play Clock & Game Clock Simulation
-  useEffect(() => {
-    if (!isSimulatingClock) return;
-
-    const clockTimer = setInterval(() => {
-      setGames((prevGames) =>
-        prevGames.map((game) => {
-          if (game.status !== 'InProgress' || game.clockSeconds <= 0) {
-            return game;
-          }
-
-          const newSecs = Math.max(0, game.clockSeconds - 1);
-          const mins = Math.floor(newSecs / 60);
-          const secs = newSecs % 60;
-          const displayClock = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
-          const newPlayClock = game.playClock !== undefined ? (game.playClock <= 1 ? 40 : game.playClock - 1) : 25;
-
-          return {
-            ...game,
-            clockSeconds: newSecs,
-            clock: displayClock,
-            playClock: newPlayClock,
-            statusDetail: `${game.quarter} ${displayClock}`
-          };
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(clockTimer);
-  }, [isSimulatingClock]);
-
-  // Filter games according to active filter tab
-  const filteredGames = games.filter((g) => {
-    if (activeFilter === 'live') return g.status === 'InProgress' || g.status === 'Halftime';
-    if (activeFilter === 'final') return g.status === 'Final';
-    if (activeFilter === 'upcoming') return g.status === 'Scheduled';
-    return true;
-  });
+  // Filter games according to active filter tab, keeping games playing "now" at the top
+  const filteredGames = sortGamesPlayingNowFirst(
+    games.filter((g) => {
+      if (activeFilter === 'live') return g.status === 'InProgress' || g.status === 'Halftime';
+      if (activeFilter === 'final') return g.status === 'Final';
+      if (activeFilter === 'upcoming') return g.status === 'Scheduled';
+      return true;
+    })
+  );
 
   const liveCount = games.filter((g) => g.status === 'InProgress' || g.status === 'Halftime').length;
   const finalCount = games.filter((g) => g.status === 'Final').length;
@@ -361,20 +350,13 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
             </button>
           </div>
 
-          {/* Clock Simulator Toggle */}
-          <button
-            onClick={() => setIsSimulatingClock(!isSimulatingClock)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all border ${
-              isSimulatingClock
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
-            }`}
-            title={isSimulatingClock ? 'Pause real-time clock countdown' : 'Resume real-time clock countdown'}
-            aria-label={isSimulatingClock ? 'Pause clock countdown' : 'Resume clock countdown'}
-          >
-            {isSimulatingClock ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-            <span className="font-mono text-[11px]">{isSimulatingClock ? 'Clock Running' : 'Paused'}</span>
-          </button>
+          {/* Live Feed Status Badge */}
+          {hasLiveGames && (
+            <div className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/30">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+              <span className="font-mono text-[11px]">Live Scores</span>
+            </div>
+          )}
 
           {/* Auto Refresh Setting Popover Trigger */}
           <div className="relative">

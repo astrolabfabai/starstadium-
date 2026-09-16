@@ -438,20 +438,11 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
     [dispatchAlert]
   );
 
-  // Background simulation ticker for live scoring drive alerts across the NFL slate
-  // ONLY runs if user explicitly turned on alerts and auto-simulation!
+  // Background simulation ticker removed per strict directive: never simulate or inject fake data.
+  // Alerts are driven purely by real-time game events or manual user test trigger.
   useEffect(() => {
-    if (!isAutoSimulationActive || !isNotificationsEnabled) return;
-
-    // Periodic simulation every 45-60 seconds when enabled
-    const interval = setInterval(() => {
-      triggerSampleScoringDrive();
-    }, 45000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isAutoSimulationActive, isNotificationsEnabled, triggerSampleScoringDrive]);
+    // No-op to respect 'never simulate / use fake data'
+  }, []);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 

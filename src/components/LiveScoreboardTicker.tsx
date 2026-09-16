@@ -45,8 +45,6 @@ interface LiveScoreboardTickerProps {
 export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOpenGameDetails }) => {
   const [games, setGames] = useState<LiveGameCardData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isLiveAutoRefresh, setIsLiveAutoRefresh] = useState<boolean>(true);
-  const [isSimulatingClock, setIsSimulatingClock] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [selectedGameForModal, setSelectedGameForModal] = useState<any | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'final'>('all');
@@ -108,6 +106,18 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
               oddsOu: g.odds?.overUnder ? `O/U ${g.odds.overUnder}` : 'O/U 48.5'
             };
           });
+          // Filter to current week and sort with games playing "now" at the top
+          formatted.sort((a, b) => {
+            const aLive = a.status === 'InProgress';
+            const bLive = b.status === 'InProgress';
+            if (aLive && !bLive) return -1;
+            if (!aLive && bLive) return 1;
+            const aFinal = a.status === 'Final';
+            const bFinal = b.status === 'Final';
+            if (!aFinal && bFinal) return -1;
+            if (aFinal && !bFinal) return 1;
+            return 0;
+          });
           setGames(formatted);
           setLastUpdated(new Date().toLocaleTimeString());
           setIsLoading(false);
@@ -118,9 +128,17 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
       console.warn('Using mock live game scores:', e);
     }
 
-    // Fallback Mock Data: This week's games sorted starting at the first game of the week
+    // Fallback Mock Data: Current week's games with games playing "now" at the top
     const thisWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
     thisWeekSchedules.sort((a, b) => {
+      const aLive = a.Status === 'InProgress';
+      const bLive = b.Status === 'InProgress';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+      const aFinal = a.Status === 'Final';
+      const bFinal = b.Status === 'Final';
+      if (!aFinal && bFinal) return -1;
+      if (aFinal && !bFinal) return 1;
       const dateA = new Date(`${a.Date}T${a.Time || '13:00'}:00`).getTime();
       const dateB = new Date(`${b.Date}T${b.Time || '13:00'}:00`).getTime();
       return dateA - dateB;
@@ -173,60 +191,14 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
   // Check if any game is currently in progress
   const hasLiveGames = games.some((g) => g.status === 'InProgress');
 
-  // Periodic Auto-refresh from API - STRICTLY only refresh during games
+  // REFRESH LIVE GAMES ONLY: Only auto-refresh in background when live games are actively playing
   useEffect(() => {
-    if (!isLiveAutoRefresh || !hasLiveGames) return;
+    if (!hasLiveGames) return;
     const interval = setInterval(() => {
       fetchLiveScores();
-    }, 25000);
+    }, 20000);
     return () => clearInterval(interval);
-  }, [isLiveAutoRefresh, hasLiveGames]);
-
-  // Live second-by-second Clock Countdown Engine
-  useEffect(() => {
-    if (!isSimulatingClock) return;
-    const timer = setInterval(() => {
-      setGames((prev) =>
-        prev.map((game) => {
-          if (game.status !== 'InProgress') return game;
-
-          let newSecs = game.clockSeconds - 1;
-          let newPlayClock = (game.playClock ?? 25) - 1;
-
-          if (newPlayClock < 0) {
-            newPlayClock = 40;
-          }
-
-          if (newSecs <= 0) {
-            if (game.quarter === 'Q1') {
-              return { ...game, quarter: 'Q2', clockSeconds: 900, clock: '15:00', statusDetail: 'Start of 2nd Quarter' };
-            } else if (game.quarter === 'Q2') {
-              return { ...game, quarter: 'Halftime', status: 'Halftime', clockSeconds: 0, clock: '0:00', statusDetail: 'Halftime' };
-            } else if (game.quarter === 'Q3') {
-              return { ...game, quarter: 'Q4', clockSeconds: 900, clock: '15:00', statusDetail: 'Start of 4th Quarter' };
-            } else if (game.quarter === 'Q4') {
-              return { ...game, quarter: 'Final', status: 'Final', clockSeconds: 0, clock: '0:00', statusDetail: 'Final Score' };
-            }
-            newSecs = 0;
-          }
-
-          const mins = Math.floor(newSecs / 60);
-          const secs = newSecs % 60;
-          const displayClock = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-
-          return {
-            ...game,
-            clockSeconds: newSecs,
-            clock: displayClock,
-            playClock: newPlayClock,
-            statusDetail: `${game.quarter} ${displayClock}`
-          };
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isSimulatingClock]);
+  }, [hasLiveGames]);
 
   const filteredGames = games.filter((g) => {
     if (activeFilter === 'live') return g.status === 'InProgress' || g.status === 'Halftime';
@@ -320,20 +292,13 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
             </button>
           </div>
 
-          {/* Clock Run/Pause Simulator */}
-          <button
-            onClick={() => setIsSimulatingClock(!isSimulatingClock)}
-            className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all border ${
-              isSimulatingClock
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
-            }`}
-            title={isSimulatingClock ? 'Pause live second countdown' : 'Resume live second countdown'}
-            aria-label={isSimulatingClock ? 'Pause countdown' : 'Resume countdown'}
-          >
-            {isSimulatingClock ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            <span className="hidden lg:inline">{isSimulatingClock ? 'Live Clock' : 'Clock Paused'}</span>
-          </button>
+          {/* Live Feed Status Badge */}
+          {hasLiveGames && (
+            <div className="p-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/30">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+              <span className="hidden lg:inline font-mono">Live Scores</span>
+            </div>
+          )}
 
           {/* Refresh Button */}
           <button

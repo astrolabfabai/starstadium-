@@ -254,7 +254,12 @@ export const TeamsRostersView: React.FC<TeamsRostersViewProps> = ({
                   <td className="py-3 px-4 font-sans font-semibold text-white flex items-center gap-3">
                     <img
                       src={p.PhotoUrl}
-                      alt={p.LastName}
+                      alt={`${p.FirstName} ${p.LastName}`}
+                      width={32}
+                      height={32}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
                       className="w-8 h-8 rounded-full object-cover border border-white/10 bg-[#09090b]"
                     />
                     <div>

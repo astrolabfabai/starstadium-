@@ -56,22 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
-  const [tickerClockSeconds, setTickerClockSeconds] = useState(135); // 02:15
   const { unreadCount, setIsNotificationCenterOpen, isNotificationCenterOpen } = useScoringNotifications();
-
-  // Live second-by-second countdown for sidebar ticker
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTickerClockSeconds((prev) => (prev <= 0 ? 135 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatTickerClock = (totalSecs: number) => {
-    const mins = Math.floor(Math.max(0, totalSecs) / 60);
-    const secs = Math.max(0, totalSecs) % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const currentSeasonObj = SEASONS_LIST.find((s) => s.code === selectedSeason) || SEASONS_LIST[0];
 
@@ -93,52 +78,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navGroups: NavGroup[] = [
     {
-      groupTitle: 'Standings & Rosters',
-      groupEmoji: '🏆',
+      groupTitle: 'Core Gameday Menus',
+      groupEmoji: '🏈',
       items: [
-        { id: 'standings', label: '1. Standings & Radar', shortLabel: 'Standings', emoji: '🏆', num: '01', badge: 'AFC/NFC', badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
-        { id: 'teams', label: '2. Teams & Depth Rosters', shortLabel: 'Teams', emoji: '👥', num: '02' }
+        { id: 'plays', label: '1. Plays', shortLabel: 'Plays', emoji: '🏈', num: '01', badge: 'FILM', badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
+        { id: 'red_zone', label: '2. Red Zone', shortLabel: 'Red Zone', emoji: '🎯', num: '02', badge: 'INSIDE 20', badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30' },
+        { id: 'possession', label: '3. Possession', shortLabel: 'Possession', emoji: '⏱️', num: '03', badge: 'TOP', badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
+        { id: 'win_probability', label: '4. Win%', shortLabel: 'Win%', emoji: '📈', num: '04', badge: 'LIVE', badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse' },
+        { id: 'betting', label: '5. Odds', shortLabel: 'Odds', emoji: '💰', num: '05', badge: 'SPREAD', badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' }
       ]
     },
     {
-      groupTitle: 'Gameday & Live Events',
-      groupEmoji: '🏟️',
+      groupTitle: 'Merged Hubs',
+      groupEmoji: '🎛️',
       items: [
-        { id: 'schedule', label: '3. Schedules & Venues', shortLabel: 'Schedules', emoji: '📅', num: '03' },
-        { id: 'scoreboard', label: '4. Live Scores & Clock', shortLabel: 'Scoreboard', emoji: '📻', num: '04', badge: 'LIVE', badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse' },
-        { id: 'highlights', label: '5. Highlights & Video Matcher', shortLabel: 'Highlights', emoji: '🎬', num: '05', badge: 'AUTO', badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
-        { id: 'playbyplay', label: '6. Tactical Film Room Reel', shortLabel: 'Film Room', emoji: '⚡', num: '06', badge: 'REEL', badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' }
-      ]
-    },
-    {
-      groupTitle: 'Analytics, Draft & Fantasy',
-      groupEmoji: '📊',
-      items: [
-        { id: 'stats', label: '7. Player Scatter Stats', shortLabel: 'Scatter Stats', emoji: '🎯', num: '07' },
-        { id: 'depth_injuries', label: '8. Depth & Injury Wire', shortLabel: 'Injuries', emoji: '🩹', num: '08' },
-        { id: 'betting', label: '9. Vegas Odds & Shifts', shortLabel: 'Vegas Odds', emoji: '💰', num: '09', badge: 'SPREAD', badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' },
-        { id: 'fantasy', label: '10. DFS & Projections', shortLabel: 'DFS Fantasy', emoji: '✨', num: '10', badge: 'PROJ', badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
-        { id: 'draft_analyzer', label: '11. Draft Pick & Trade Analyzer', shortLabel: 'Draft Picks', emoji: '⚖️', num: '11', badge: 'TRADE', badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
-        { id: 'draft_simulator', label: '12. Draft Mock Simulator', shortLabel: 'Draft Mock', emoji: '🏈', num: '12', badge: 'MOCK', badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
-        { id: 'win_probability', label: '13. Win Probability Engine', shortLabel: 'Win Prob', emoji: '📈', num: '13', badge: 'LIVE', badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse' }
-      ]
-    },
-    {
-      groupTitle: 'League Feeds & Sandbox',
-      groupEmoji: '🗄️',
-      items: [
-        { id: 'news', label: '14. RotoBaller News Wire', shortLabel: 'News', emoji: '📰', num: '14', badge: 'RSS', badgeColor: 'bg-white/10 text-slate-300' },
-        { id: 'db_viewer', label: '15. Live DB & SQL Sandbox', shortLabel: 'DB Viewer', emoji: '🗄️', num: '15', badge: 'SQL', badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
+        { id: 'scoreboard', label: 'Scores & Schedules', shortLabel: 'Scores', emoji: '🏟️', num: '06', badge: 'MERGED', badgeColor: 'bg-white/10 text-slate-300' },
+        { id: 'standings', label: 'Standings & Rosters', shortLabel: 'Standings', emoji: '🏆', num: '07', badge: 'MERGED', badgeColor: 'bg-white/10 text-slate-300' },
+        { id: 'fantasy', label: 'Fantasy & Draft Hub', shortLabel: 'Fantasy', emoji: '✨', num: '08', badge: 'MERGED', badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+        { id: 'admin', label: 'System & League Feeds', shortLabel: 'System', emoji: '⚙️', num: '09', badge: 'ADMIN', badgeColor: 'bg-white/10 text-slate-300' },
         { id: 'dashboard', label: 'Master Grid Workspace', shortLabel: 'All Grid', emoji: '🎛️', num: 'ALL' }
-      ]
-    },
-    {
-      groupTitle: 'Account & Administration',
-      groupEmoji: '⚙️',
-      items: [
-        { id: 'alerts', label: 'Live Alerts Hub & Cookie Lab', shortLabel: 'Alerts Hub', emoji: '🔔', num: 'ALRT', badge: 'COOKIE', badgeColor: 'bg-rose-500/20 text-rose-300 border border-rose-500/30' },
-        { id: 'user_account', label: 'User Account & Profile', shortLabel: 'Account', emoji: '👤', num: 'ME', badge: 'USER', badgeColor: 'bg-sky-500/20 text-sky-400 border border-sky-500/30' },
-        { id: 'admin', label: 'Server & API Admin', shortLabel: 'Admin', emoji: '🛡️', num: 'ROOT', badge: 'BACKEND', badgeColor: 'bg-amber-500/20 text-amber-400 border border-amber-500/30' }
       ]
     }
   ];
@@ -333,21 +291,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-3 border-t border-white/10 bg-[#09090b]">
           {!isCollapsed ? (
             <div className="space-y-2">
-              {/* Mini Scoreboard Ticker */}
+              {/* Mini Scoreboard Status */}
               <div className="bg-[#121214] p-2 rounded-lg border border-white/5 text-[11px] font-mono space-y-1">
-                <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase">
-                  <span>🏈 Live Ticker</span>
-                  <span className="text-rose-400 font-bold flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span> Q4 {formatTickerClock(tickerClockSeconds)}
+                <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase">
+                  <span>🏈 Active Season</span>
+                  <span className="text-amber-400 font-bold font-mono">
+                    {selectedSeason}
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-white">
-                  <span>KC Chiefs</span>
-                  <strong className="text-amber-400">27</strong>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>BAL Ravens</span>
-                  <strong className="text-white">24</strong>
+                <div className="flex justify-between items-center text-slate-300 text-xs">
+                  <span>NFL Scoreboard</span>
+                  <span className="text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live Feeds
+                  </span>
                 </div>
               </div>
 

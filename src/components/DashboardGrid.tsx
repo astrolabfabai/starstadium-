@@ -19,6 +19,8 @@ import { DbViewerView } from './views/DbViewerView';
 import { UserAccountView } from './views/UserAccountView';
 import { ServerAdminView } from './views/ServerAdminView';
 import { AlertsCenterView } from './views/AlertsCenterView';
+import RedZoneView from './views/RedZoneView';
+import PossessionView from './views/PossessionView';
 import {
   DEFAULT_WIDGET_CONFIGS,
   reorderWidgets,
@@ -261,10 +263,29 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         );
       case 'stats':
         return <PlayerLeaderboardsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
+      case 'plays':
       case 'playbyplay':
         return (
           <PlayByPlayView
             selectedSeason={selectedSeason}
+            onSeasonChange={onSeasonChange}
+            selectedGameKey={selectedGameKey}
+            onSelectGameKey={onSelectGameKey}
+          />
+        );
+      case 'red_zone':
+        return (
+          <RedZoneView
+            selectedSeason={selectedSeason as SeasonCode}
+            onSeasonChange={onSeasonChange}
+            selectedGameKey={selectedGameKey}
+            onSelectGameKey={onSelectGameKey}
+          />
+        );
+      case 'possession':
+        return (
+          <PossessionView
+            selectedSeason={selectedSeason as SeasonCode}
             onSeasonChange={onSeasonChange}
             selectedGameKey={selectedGameKey}
             onSelectGameKey={onSelectGameKey}

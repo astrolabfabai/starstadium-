@@ -114,16 +114,33 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
 
   // Dynamic plays for the selected game (Live or Final)
   const gamePlays = getPlaysForGame(
-    activeGame.GameKey,
-    activeGame.AwayTeam,
-    activeGame.HomeTeam,
-    activeGame.Status
+    activeGame?.GameKey || '202610203',
+    activeGame?.AwayTeam || 'BAL',
+    activeGame?.HomeTeam || 'KC',
+    activeGame?.Status || 'Final'
   );
 
   const filteredPlays = gamePlays.filter((p) => {
     if (selectedQuarter !== 'ALL' && p.Quarter !== selectedQuarter) return false;
     return true;
   });
+
+  const fallbackPlay: PlayByPlayEvent = {
+    PlayID: 9001,
+    GameID: Number(activeGame?.GameKey) || 202610203,
+    Quarter: 1,
+    TimeRemaining: '15:00',
+    Possession: activeGame?.HomeTeam || 'KC',
+    Down: 1,
+    Distance: 10,
+    YardLine: 25,
+    YardLineSide: activeGame?.HomeTeam || 'KC',
+    Description: `Kickoff and opening tactical drive. Ready for chalkboard simulation.`,
+    PlayType: 'Pass',
+    YardsGained: 6,
+    IsBigPlay: false,
+    WinProbabilityPct: 54.0
+  };
 
   const [selectedPlayId, setSelectedPlayId] = useState<number>(filteredPlays[0]?.PlayID || 5001);
 
@@ -135,7 +152,7 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
     }
   }, [selectedGameKey, selectedQuarter]);
 
-  const activePlay = filteredPlays.find((p) => p.PlayID === selectedPlayId) || filteredPlays[0] || gamePlays[0];
+  const activePlay = filteredPlays.find((p) => p.PlayID === selectedPlayId) || filteredPlays[0] || gamePlays[0] || fallbackPlay;
   const activePlayConcept = getPlayTacticalConcept(activePlay);
   const activePlayIndex = filteredPlays.findIndex((p) => p.PlayID === selectedPlayId);
   const currentPlayIndexNumber = activePlayIndex >= 0 ? activePlayIndex + 1 : 1;
@@ -402,12 +419,12 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: THE GRIDIRON TACTICAL CANVAS & REEL CONTROLS (8 COLS) */}
         <div className="lg:col-span-8 space-y-4">
-          {/* Play Animation Number & Situation Header */}
+          {/* Football Play Number & Situation Header */}
           <div className="bg-[#121214] border border-white/10 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2 shadow-inner">
             <div className="flex items-center gap-2">
               <TeamLogo teamKey={activePlay.Possession} size="sm" shape="circle" />
               <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 font-mono font-black text-xs border border-amber-500/30">
-                PLAY ANIMATION #{currentPlayIndexNumber} OF {filteredPlays.length}
+                FOOTBALL PLAY #{currentPlayIndexNumber} OF {filteredPlays.length}
               </span>
               <span className="text-xs sm:text-sm font-mono font-bold text-white">
                 {activePlay.Down === 1 ? '1st' : activePlay.Down === 2 ? '2nd' : activePlay.Down === 3 ? '3rd' : '4th'} &amp; {activePlay.Distance} &bull; {activePlay.YardLineSide} {activePlay.YardLine}
@@ -420,15 +437,15 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
             </div>
           </div>
 
-          {/* Play Animation Stepper Progress & Step Numbers Strip */}
+          {/* Football Play Stepper Progress & Step Numbers Strip */}
           <div className="bg-[#0e0e11] border border-white/10 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-black text-xs shadow-md shadow-amber-500/20">
-                  ANIMATION #{currentPlayIndexNumber}
+                  PLAY #{currentPlayIndexNumber}
                 </span>
                 <span className="text-xs font-mono font-bold text-slate-300">
-                  Step {currentPlayIndexNumber} of {filteredPlays.length} in Sequence
+                  Play {currentPlayIndexNumber} of {filteredPlays.length} in Sequence
                 </span>
               </div>
               <span className="text-[11px] font-mono text-amber-400/90 font-semibold hidden sm:inline-block">
@@ -450,7 +467,7 @@ export const PlayByPlayView: React.FC<PlayByPlayViewProps> = ({
                       setSelectedPlayId(p.PlayID);
                       setSelectedNodeId(null);
                     }}
-                    title={`Animation Step #${stepNum}: Q${p.Quarter} ${p.TimeRemaining}`}
+                    title={`Football Play #${stepNum}: Q${p.Quarter} ${p.TimeRemaining}`}
                     className={`shrink-0 px-2 py-1 rounded-lg font-mono text-[11px] font-bold transition-all flex items-center gap-1 ${
                       isCurrent
                         ? 'bg-amber-500 text-slate-950 font-black ring-2 ring-amber-400 scale-105 shadow-md shadow-amber-500/30'
