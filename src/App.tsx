@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ViewMode, SeasonCode } from './types';
 import { Sidebar } from './components/Sidebar';
 import { DashboardGrid } from './components/DashboardGrid';
+import { GamedayCommandBar } from './components/GamedayCommandBar';
 import { ApiInspectorModal } from './components/ApiInspectorModal';
 import { GoogleAiAssistant } from './components/GoogleAiAssistant';
 import { OllamaAssistant } from './components/OllamaAssistant';
@@ -269,6 +270,17 @@ function AppContent() {
 
         {/* Dynamic View Canvas */}
         <main className="flex-1 p-2.5 sm:p-4 lg:p-5 max-w-7xl w-full mx-auto space-y-3.5">
+          <GamedayCommandBar
+            selectedGameKey={selectedGameKey}
+            onSelectGameKey={setSelectedGameKey}
+            activeView={activeView}
+            onViewChange={setActiveView}
+            selectedSeason={selectedSeason}
+            onSeasonChange={setSelectedSeason}
+            onOpenGoogleAi={() => handleOpenAiWithPrompt(`Analyze active game matchup key: ${selectedGameKey}`)}
+            onRefresh={handleRefresh}
+            isRefreshing={isRefreshing}
+          />
           <DashboardGrid
             activeView={activeView}
             onViewChange={setActiveView}

@@ -294,7 +294,14 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
       case 'depth_injuries':
         return <DepthInjuryView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
       case 'betting':
-        return <BettingOddsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
+        return (
+          <BettingOddsView
+            selectedSeason={selectedSeason}
+            onSeasonChange={onSeasonChange}
+            selectedGameKey={selectedGameKey}
+            onSelectGameKey={onSelectGameKey}
+          />
+        );
       case 'fantasy':
         return <FantasyDfsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
       case 'draft_analyzer':
@@ -361,89 +368,7 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
 
   // Master Dashboard View with customizable widget grid
   const renderWidgetContent = (type: ViewMode) => {
-    switch (type) {
-      case 'standings':
-        return <StandingsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'teams':
-        return <TeamsRostersView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'schedule':
-        return (
-          <ScheduleVenueView
-            selectedSeason={selectedSeason}
-            onSeasonChange={onSeasonChange}
-            onSelectGame={handleGameSelectAndNavigate}
-          />
-        );
-      case 'scoreboard':
-        return (
-          <ScoreboardLiveView
-            selectedSeason={selectedSeason}
-            onSeasonChange={onSeasonChange}
-            selectedGameKey={selectedGameKey}
-            onSelectGameKey={onSelectGameKey}
-            onNavigateToPlayByPlay={handleGameSelectAndNavigate}
-            onNavigateToHighlights={handleNavigateToHighlights}
-            onNavigateToWinProbability={handleNavigateToWinProb}
-          />
-        );
-      case 'highlights':
-        return (
-          <GameHighlightsAutomationView
-            selectedSeason={selectedSeason}
-            selectedGameKey={selectedGameKey}
-            onSelectGameKey={onSelectGameKey}
-            onNavigateToGame={handleGameSelectAndNavigate}
-          />
-        );
-      case 'stats':
-        return <PlayerLeaderboardsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'playbyplay':
-        return (
-          <PlayByPlayView
-            selectedSeason={selectedSeason}
-            onSeasonChange={onSeasonChange}
-            selectedGameKey={selectedGameKey}
-            onSelectGameKey={onSelectGameKey}
-          />
-        );
-      case 'depth_injuries':
-        return <DepthInjuryView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'betting':
-        return <BettingOddsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'fantasy':
-        return <FantasyDfsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'draft_analyzer':
-        return <DraftPickAnalyzerView />;
-      case 'draft_simulator':
-        return <DraftMockSimulatorView onNavigateToTrades={() => onViewChange('draft_analyzer')} />;
-      case 'win_probability':
-        return (
-          <WinProbabilityEngineView
-            selectedSeason={selectedSeason}
-            onSeasonChange={onSeasonChange}
-            selectedGameKey={selectedGameKey}
-            onSelectGameKey={onSelectGameKey}
-          />
-        );
-      case 'news':
-        return <NewsTransactionsView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'db_viewer':
-        return <DbViewerView selectedSeason={selectedSeason} onSeasonChange={onSeasonChange} />;
-      case 'user_account':
-        return <UserAccountView selectedSeason={selectedSeason} onNavigateToView={onViewChange} />;
-      case 'admin':
-        return <ServerAdminView selectedSeason={selectedSeason} />;
-      case 'alerts':
-        return (
-          <AlertsCenterView
-            selectedSeason={selectedSeason}
-            onSeasonChange={onSeasonChange}
-            onNavigateToPlayByPlay={handleGameSelectAndNavigate}
-          />
-        );
-      default:
-        return null;
-    }
+    return renderActiveSingleView(type);
   };
 
   const visibleWidgets = widgets.filter((w) => w.visible);

@@ -6,19 +6,24 @@ interface BettingOddsViewProps {
   selectedSeason?: SeasonCode;
   onSeasonChange?: (season: SeasonCode) => void;
   onSelectGameForPlayByPlay?: (gameKey: string) => void;
+  selectedGameKey?: string;
+  onSelectGameKey?: (key: string) => void;
 }
 
 export const BettingOddsView: React.FC<BettingOddsViewProps> = ({
   selectedSeason = '2026REG',
   onSeasonChange,
-  onSelectGameForPlayByPlay
+  onSelectGameForPlayByPlay,
+  selectedGameKey,
+  onSelectGameKey
 }) => {
   return (
     <div className="space-y-6">
       <BettingOddsWidget
         selectedSeason={selectedSeason}
         onSeasonChange={onSeasonChange}
-        onSelectGameForPlayByPlay={onSelectGameForPlayByPlay}
+        gameKeyFilter={selectedGameKey}
+        onSelectGameForPlayByPlay={onSelectGameKey || onSelectGameForPlayByPlay}
       />
     </div>
   );

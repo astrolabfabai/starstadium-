@@ -6,7 +6,9 @@ import {
   ShieldCheck,
   Activity,
   Award,
-  RotateCcw
+  RotateCcw,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { TeamLogo } from '../TeamLogo';
 import { SCHEDULES_DATA } from '../../data/sportsDataMock';
@@ -54,7 +56,14 @@ export default function PossessionView({
   onSelectGameKey
 }: PossessionViewProps) {
   const games: GameSchedule[] = useMemo(() => {
-    return (SCHEDULES_DATA && SCHEDULES_DATA[selectedSeason]) || (SCHEDULES_DATA && SCHEDULES_DATA['2026REG']) || [];
+    const s = String(selectedSeason || '');
+    return SCHEDULES_DATA.filter((g) => {
+      if (s.startsWith('2026')) return g.Season === 2026;
+      if (s.startsWith('2025')) return g.Season === 2025;
+      if (s.startsWith('2024')) return g.Season === 2024;
+      if (s.startsWith('2023')) return g.Season === 2023;
+      return true;
+    });
   }, [selectedSeason]);
 
   const activeGame: GameSchedule | undefined = useMemo(() => {
@@ -64,6 +73,11 @@ export default function PossessionView({
     }
     return games[0];
   }, [games, selectedGameKey]);
+
+  // Minimize state for widgets
+  const [isDriveFieldMinimized, setIsDriveFieldMinimized] = useState(false);
+  const [isClockBreakdownMinimized, setIsClockBreakdownMinimized] = useState(false);
+  const [isRankingsMinimized, setIsRankingsMinimized] = useState(false);
 
   const homeTeamKey = activeGame?.HomeTeam || 'KC';
   const awayTeamKey = activeGame?.AwayTeam || 'BAL';
@@ -138,71 +152,92 @@ export default function PossessionView({
       {/* TIME OF POSSESSION SPLIT COMPARISON BAR */}
       <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-emerald-400" />
-            <span>Game Time of Possession Battle</span>
-          </h2>
-          <span className="text-xs font-mono text-slate-400">
-            Total Reg. Time Expended: 60:00
-          </span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-400" />
+              <span>⏱️ Game Time of Possession Battle</span>
+            </h2>
+            <span className="text-xs font-mono text-slate-400">
+              Total Reg. Time Expended: 60:00
+            </span>
+          </div>
+
+          <button
+            onClick={() => setIsClockBreakdownMinimized(!isClockBreakdownMinimized)}
+            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
+          >
+            {isClockBreakdownMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+            <span>{isClockBreakdownMinimized ? 'Expand TOP Battle' : 'Minimize TOP Battle'}</span>
+          </button>
         </div>
 
-        {/* TOP Percentage Split Bar */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center font-mono">
-            <div className="flex items-center gap-2">
-              <TeamLogo teamKey={awayTeamKey} size="xs" shape="circle" />
-              <span className="font-bold text-white text-sm">{awayTeamKey}</span>
-              <span className="text-blue-400 font-bold text-lg">27:40 ({awayTopPct}%)</span>
+        {isClockBreakdownMinimized ? (
+          <div
+            onClick={() => setIsClockBreakdownMinimized(false)}
+            className="p-3 bg-black/40 text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300 rounded-xl border border-white/5"
+          >
+            <span>⏱️ Time of Possession Minimized ({awayTeamKey}: {awayTopPct}% &bull; {homeTeamKey}: {homeTopPct}%) &bull; <strong className="text-emerald-400 underline">Click to Expand</strong></span>
+          </div>
+        ) : (
+          <>
+            {/* TOP Percentage Split Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center font-mono">
+                <div className="flex items-center gap-2">
+                  <TeamLogo teamKey={awayTeamKey} size="xs" shape="circle" />
+                  <span className="font-bold text-white text-sm">{awayTeamKey}</span>
+                  <span className="text-blue-400 font-bold text-lg">27:40 ({awayTopPct}%)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-rose-400 font-bold text-lg">32:20 ({homeTopPct}%)</span>
+                  <span className="font-bold text-white text-sm">{homeTeamKey}</span>
+                  <TeamLogo teamKey={homeTeamKey} size="xs" shape="circle" />
+                </div>
+              </div>
+
+              <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden flex shadow-inner">
+                <div
+                  className="h-full bg-blue-600 transition-all duration-500"
+                  style={{ width: `${awayTopPct}%` }}
+                  title={`${awayTeamKey}: ${awayTopPct}% TOP`}
+                />
+                <div
+                  className="h-full bg-rose-600 transition-all duration-500"
+                  style={{ width: `${homeTopPct}%` }}
+                  title={`${homeTeamKey}: ${homeTopPct}% TOP`}
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-rose-400 font-bold text-lg">32:20 ({homeTopPct}%)</span>
-              <span className="font-bold text-white text-sm">{homeTeamKey}</span>
-              <TeamLogo teamKey={homeTeamKey} size="xs" shape="circle" />
+
+            {/* Drive Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-center">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase block">Total Drives</span>
+                <span className="text-base font-bold text-white mt-1 block">
+                  {awayTeamKey}: 10 &bull; {homeTeamKey}: 10
+                </span>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase block">Avg Plays / Drive</span>
+                <span className="text-base font-bold text-emerald-400 mt-1 block">
+                  {awayTeamKey}: 5.4 &bull; {homeTeamKey}: 6.7
+                </span>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase block">3rd Down Conv</span>
+                <span className="text-base font-bold text-amber-400 mt-1 block">
+                  {awayTeamKey}: 4/11 &bull; {homeTeamKey}: 7/12
+                </span>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <span className="text-[10px] text-slate-400 uppercase block">Turnover Margin</span>
+                <span className="text-base font-bold text-slate-200 mt-1 block">
+                  {awayTeamKey}: -1 &bull; {homeTeamKey}: +1
+                </span>
+              </div>
             </div>
-          </div>
-
-          <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden flex shadow-inner">
-            <div
-              className="h-full bg-blue-600 transition-all duration-500"
-              style={{ width: `${awayTopPct}%` }}
-              title={`${awayTeamKey}: ${awayTopPct}% TOP`}
-            />
-            <div
-              className="h-full bg-rose-600 transition-all duration-500"
-              style={{ width: `${homeTopPct}%` }}
-              title={`${homeTeamKey}: ${homeTopPct}% TOP`}
-            />
-          </div>
-        </div>
-
-        {/* Drive Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-center">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-            <span className="text-[10px] text-slate-400 uppercase block">Total Drives</span>
-            <span className="text-base font-bold text-white mt-1 block">
-              {awayTeamKey}: 10 &bull; {homeTeamKey}: 10
-            </span>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-            <span className="text-[10px] text-slate-400 uppercase block">Avg Plays / Drive</span>
-            <span className="text-base font-bold text-emerald-400 mt-1 block">
-              {awayTeamKey}: 5.4 &bull; {homeTeamKey}: 6.7
-            </span>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-            <span className="text-[10px] text-slate-400 uppercase block">3rd Down Conv</span>
-            <span className="text-base font-bold text-amber-400 mt-1 block">
-              {awayTeamKey}: 4/11 &bull; {homeTeamKey}: 7/12
-            </span>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-            <span className="text-[10px] text-slate-400 uppercase block">Turnover Margin</span>
-            <span className="text-base font-bold text-slate-200 mt-1 block">
-              {awayTeamKey}: -1 &bull; {homeTeamKey}: +1
-            </span>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* SUSTAINED DRIVE VISUALIZER (NO TEAM LOGOS ON THE FIELD) */}
@@ -212,7 +247,7 @@ export default function PossessionView({
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <span>Tactical Field Drive Progression</span>
+                <span>🛡️ Tactical Field Drive Progression</span>
               </h2>
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold border border-emerald-500/40">
                 Active Drive
@@ -223,156 +258,177 @@ export default function PossessionView({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => setActivePossession(activePossession === homeTeamKey ? awayTeamKey : homeTeamKey)}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold transition flex items-center gap-1.5 border border-white/10"
+              onClick={() => setIsDriveFieldMinimized(!isDriveFieldMinimized)}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>Possession: {activePossession}</span>
+              {isDriveFieldMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+              <span>{isDriveFieldMinimized ? 'Expand Drive Field' : 'Minimize Drive Field'}</span>
             </button>
+
+            {!isDriveFieldMinimized && (
+              <button
+                onClick={() => setActivePossession(activePossession === homeTeamKey ? awayTeamKey : homeTeamKey)}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold transition flex items-center gap-1.5 border border-white/10"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Possession: {activePossession}</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Active Drive Telemetry Bar */}
-        <div className="bg-[#18181e] border border-white/10 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-          <div className="flex items-center gap-3">
-            <span className="px-2 py-1 rounded bg-emerald-500 text-slate-950 font-black">
-              {activePossession} BALL
-            </span>
-            <span className="text-slate-300">
-              Drive Started: <strong className="text-white">Own {driveYardStart} yd line</strong>
-            </span>
-            <span className="text-slate-300">
-              Current Ball: <strong className="text-emerald-400">Opp {100 - currentYardLine} yd line</strong>
-            </span>
+        {isDriveFieldMinimized ? (
+          <div
+            onClick={() => setIsDriveFieldMinimized(false)}
+            className="p-3 bg-black/40 text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300 rounded-xl border border-white/5"
+          >
+            <span>🛡️ Drive Field Minimized ({activePossession} Ball at Opp {100 - currentYardLine} yd line &bull; +{currentYardLine - driveYardStart} yds gained) &bull; <strong className="text-emerald-400 underline">Click to Expand</strong></span>
           </div>
-          <div className="flex items-center gap-4 text-slate-300">
-            <span>
-              Plays: <strong className="text-amber-400">{drivePlays}</strong>
-            </span>
-            <span>
-              Yards Gained: <strong className="text-emerald-400">+{currentYardLine - driveYardStart} yds</strong>
-            </span>
-            <span>
-              Clock Used: <strong className="text-white">{driveTime}</strong>
-            </span>
-          </div>
-        </div>
+        ) : (
+          <>
+            {/* Active Drive Telemetry Bar */}
+            <div className="bg-[#18181e] border border-white/10 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-3">
+                <span className="px-2 py-1 rounded bg-emerald-500 text-slate-950 font-black">
+                  {activePossession} BALL
+                </span>
+                <span className="text-slate-300">
+                  Drive Started: <strong className="text-white">Own {driveYardStart} yd line</strong>
+                </span>
+                <span className="text-slate-300">
+                  Current Ball: <strong className="text-emerald-400">Opp {100 - currentYardLine} yd line</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-slate-300">
+                <span>
+                  Plays: <strong className="text-amber-400">{drivePlays}</strong>
+                </span>
+                <span>
+                  Yards Gained: <strong className="text-emerald-400">+{currentYardLine - driveYardStart} yds</strong>
+                </span>
+                <span>
+                  Clock Used: <strong className="text-white">{driveTime}</strong>
+                </span>
+              </div>
+            </div>
 
-        {/* 100-YARD TURF FIELD - Zero Team Logos on Field */}
-        <div className="w-full aspect-[21/9] sm:aspect-[24/9] bg-[#164326] relative rounded-xl border border-emerald-500/40 overflow-hidden shadow-inner select-none">
-          <svg className="w-full h-full" viewBox="0 0 100 53.3" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="posLeftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#1e3a8a" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#172554" stopOpacity="0.9" />
-              </linearGradient>
+            {/* 100-YARD TURF FIELD - Zero Team Logos on Field */}
+            <div className="w-full aspect-[21/9] sm:aspect-[24/9] bg-[#164326] relative rounded-xl border border-emerald-500/40 overflow-hidden shadow-inner select-none">
+              <svg className="w-full h-full" viewBox="0 0 100 53.3" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="posLeftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#1e3a8a" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#172554" stopOpacity="0.9" />
+                  </linearGradient>
 
-              <linearGradient id="posRightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#881337" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#4c0519" stopOpacity="0.9" />
-              </linearGradient>
+                  <linearGradient id="posRightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#881337" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#4c0519" stopOpacity="0.9" />
+                  </linearGradient>
 
-              <linearGradient id="driveFill" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#10b981" stopOpacity="0.35" />
-              </linearGradient>
-            </defs>
+                  <linearGradient id="driveFill" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.1" />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity="0.35" />
+                  </linearGradient>
+                </defs>
 
-            {/* Grass Turf Stripes */}
-            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map((x, i) => (
-              <rect
-                key={`stripe-${x}`}
-                x={x}
-                y="0"
-                width="10"
-                height="53.3"
-                fill={i % 2 === 0 ? '#1b4d2e' : '#164326'}
-              />
-            ))}
+                {/* Grass Turf Stripes */}
+                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map((x, i) => (
+                  <rect
+                    key={`stripe-${x}`}
+                    x={x}
+                    y="0"
+                    width="10"
+                    height="53.3"
+                    fill={i % 2 === 0 ? '#1b4d2e' : '#164326'}
+                  />
+                ))}
 
-            {/* Drive Trajectory Overlay Area */}
-            <rect
-              x={fieldStartX}
-              y="10"
-              width={Math.max(2, fieldCurrentX - fieldStartX)}
-              height="33.3"
-              fill="url(#driveFill)"
-              stroke="#10b981"
-              strokeWidth="0.4"
-              strokeDasharray="2,1"
-              rx="2"
-            />
+                {/* Drive Trajectory Overlay Area */}
+                <rect
+                  x={fieldStartX}
+                  y="10"
+                  width={Math.max(2, fieldCurrentX - fieldStartX)}
+                  height="33.3"
+                  fill="url(#driveFill)"
+                  stroke="#10b981"
+                  strokeWidth="0.4"
+                  strokeDasharray="2,1"
+                  rx="2"
+                />
 
-            {/* Left Endzone (0 - 10) - Pure turf text, no team logo */}
-            <rect x="0" y="0" width="10" height="53.3" fill="url(#posLeftGrad)" />
-            <text x="5" y="27" fill="#ffffff" fillOpacity="0.5" fontSize="4.5" fontWeight="900" textAnchor="middle" transform="rotate(-90 5 27)" letterSpacing="2">
-              {awayTeamKey}
-            </text>
+                {/* Left Endzone (0 - 10) - Pure turf text, no team logo */}
+                <rect x="0" y="0" width="10" height="53.3" fill="url(#posLeftGrad)" />
+                <text x="5" y="27" fill="#ffffff" fillOpacity="0.5" fontSize="4.5" fontWeight="900" textAnchor="middle" transform="rotate(-90 5 27)" letterSpacing="2">
+                  {awayTeamKey}
+                </text>
 
-            {/* Right Endzone (90 - 100) - Pure turf text, no team logo */}
-            <rect x="90" y="0" width="10" height="53.3" fill="url(#posRightGrad)" />
-            <text x="95" y="27" fill="#ffffff" fillOpacity="0.5" fontSize="4.5" fontWeight="900" textAnchor="middle" transform="rotate(90 95 27)" letterSpacing="2">
-              {homeTeamKey}
-            </text>
+                {/* Right Endzone (90 - 100) - Pure turf text, no team logo */}
+                <rect x="90" y="0" width="10" height="53.3" fill="url(#posRightGrad)" />
+                <text x="95" y="27" fill="#ffffff" fillOpacity="0.5" fontSize="4.5" fontWeight="900" textAnchor="middle" transform="rotate(90 95 27)" letterSpacing="2">
+                  {homeTeamKey}
+                </text>
 
-            {/* 10-Yard Lines */}
-            {[10, 20, 30, 40, 50, 60, 70, 80, 90].map((x) => (
-              <line
-                key={`pos-line-${x}`}
-                x1={x}
-                y1="0"
-                x2={x}
-                y2="53.3"
-                stroke="#ffffff"
-                strokeWidth={x === 10 || x === 90 ? '0.6' : '0.25'}
-                strokeOpacity="0.5"
-              />
-            ))}
+                {/* 10-Yard Lines */}
+                {[10, 20, 30, 40, 50, 60, 70, 80, 90].map((x) => (
+                  <line
+                    key={`pos-line-${x}`}
+                    x1={x}
+                    y1="0"
+                    x2={x}
+                    y2="53.3"
+                    stroke="#ffffff"
+                    strokeWidth={x === 10 || x === 90 ? '0.6' : '0.25'}
+                    strokeOpacity="0.5"
+                  />
+                ))}
 
-            {/* Yard Markers */}
-            {[
-              { x: 20, num: '10' },
-              { x: 30, num: '20' },
-              { x: 40, num: '30' },
-              { x: 50, num: '40' },
-              { x: 60, num: '50' },
-              { x: 70, num: '40' },
-              { x: 80, num: '30' }
-            ].map((m, i) => (
-              <g key={`pos-num-${i}`} fill="#ffffff" fillOpacity="0.45" fontSize="3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
-                <text x={m.x} y="8">{m.num}</text>
-                <text x={m.x} y="47">{m.num}</text>
-              </g>
-            ))}
+                {/* Yard Markers */}
+                {[
+                  { x: 20, num: '10' },
+                  { x: 30, num: '20' },
+                  { x: 40, num: '30' },
+                  { x: 50, num: '40' },
+                  { x: 60, num: '50' },
+                  { x: 70, num: '40' },
+                  { x: 80, num: '30' }
+                ].map((m, i) => (
+                  <g key={`pos-num-${i}`} fill="#ffffff" fillOpacity="0.45" fontSize="3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    <text x={m.x} y="8">{m.num}</text>
+                    <text x={m.x} y="47">{m.num}</text>
+                  </g>
+                ))}
 
-            {/* Drive Start Marker */}
-            <circle cx={fieldStartX} cy="26.65" r="1.4" fill="#fbbf24" />
-            <text x={fieldStartX} y="22" fill="#fbbf24" fontSize="2" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
-              START ({driveYardStart})
-            </text>
+                {/* Drive Start Marker */}
+                <circle cx={fieldStartX} cy="26.65" r="1.4" fill="#fbbf24" />
+                <text x={fieldStartX} y="22" fill="#fbbf24" fontSize="2" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                  START ({driveYardStart})
+                </text>
 
-            {/* Current Ball Position Line */}
-            <line
-              x1={fieldCurrentX}
-              y1="0"
-              x2={fieldCurrentX}
-              y2="53.3"
-              stroke="#10b981"
-              strokeWidth="0.8"
-            />
-            <circle cx={fieldCurrentX} cy="26.65" r="2" fill="#10b981" />
-            <text x={fieldCurrentX} y="34" fill="#10b981" fontSize="2.3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
-              BALL ON {100 - currentYardLine} YD
-            </text>
+                {/* Current Ball Position Line */}
+                <line
+                  x1={fieldCurrentX}
+                  y1="0"
+                  x2={fieldCurrentX}
+                  y2="53.3"
+                  stroke="#10b981"
+                  strokeWidth="0.8"
+                />
+                <circle cx={fieldCurrentX} cy="26.65" r="2" fill="#10b981" />
+                <text x={fieldCurrentX} y="34" fill="#10b981" fontSize="2.3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                  BALL ON {100 - currentYardLine} YD
+                </text>
 
-            {/* Football Icon */}
-            <text x={fieldCurrentX} y="27.4" fill="#f59e0b" fontSize="2.8" textAnchor="middle">
-              🏈
-            </text>
-          </svg>
-        </div>
+                {/* Football Icon */}
+                <text x={fieldCurrentX} y="27.4" fill="#f59e0b" fontSize="2.8" textAnchor="middle">
+                  🏈
+                </text>
+              </svg>
+            </div>
+          </>
+        )}
       </div>
 
       {/* LEAGUE POSSESSION & BALL CONTROL STANDINGS */}
@@ -381,100 +437,121 @@ export default function PossessionView({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
               <Award className="w-5 h-5 text-amber-400" />
-              <span>NFL Time of Possession &amp; Ball Control Standings</span>
+              <span>🏆 NFL Time of Possession &amp; Ball Control Standings</span>
             </h2>
             <p className="text-xs text-slate-400">
               Ranked by average game time of possession, sustained drive length, and third-down sustainability.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Conference Selector */}
-            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
-              {(['ALL', 'AFC', 'NFC'] as const).map((conf) => (
-                <button
-                  key={conf}
-                  onClick={() => setSelectedConference(conf)}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    selectedConference === conf
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {conf}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsRankingsMinimized(!isRankingsMinimized)}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
+            >
+              {isRankingsMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+              <span>{isRankingsMinimized ? 'Expand Standings' : 'Minimize Standings'}</span>
+            </button>
 
-            {/* Sort Field */}
-            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-400">
-              <span className="px-1 text-[10px]">SORT:</span>
-              <button
-                onClick={() => setSortField('avgTopSecs')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'avgTopSecs' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                TOP
-              </button>
-              <button
-                onClick={() => setSortField('playsPerDrive')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'playsPerDrive' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                Plays/Dr
-              </button>
-              <button
-                onClick={() => setSortField('thirdDownConvPct')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'thirdDownConvPct' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                3rd Down
-              </button>
-            </div>
+            {!isRankingsMinimized && (
+              <>
+                {/* Conference Selector */}
+                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
+                  {(['ALL', 'AFC', 'NFC'] as const).map((conf) => (
+                    <button
+                      key={conf}
+                      onClick={() => setSelectedConference(conf)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                        selectedConference === conf
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {conf}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sort Field */}
+                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-400">
+                  <span className="px-1 text-[10px]">SORT:</span>
+                  <button
+                    onClick={() => setSortField('avgTopSecs')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'avgTopSecs' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    TOP
+                  </button>
+                  <button
+                    onClick={() => setSortField('playsPerDrive')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'playsPerDrive' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    Plays/Dr
+                  </button>
+                  <button
+                    onClick={() => setSortField('thirdDownConvPct')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'thirdDownConvPct' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    3rd Down
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Rankings Table */}
-        <div className="overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-[#18181e] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/10">
-              <tr>
-                <th className="py-3 px-3">Rank</th>
-                <th className="py-3 px-3">Team</th>
-                <th className="py-3 px-3 text-center">Conf</th>
-                <th className="py-3 px-3 text-right text-emerald-400 font-bold">Avg TOP</th>
-                <th className="py-3 px-3 text-right">Drives/G</th>
-                <th className="py-3 px-3 text-right text-amber-400 font-bold">Plays/Drive</th>
-                <th className="py-3 px-3 text-right">Yards/Drive</th>
-                <th className="py-3 px-3 text-right">3 &amp; Out %</th>
-                <th className="py-3 px-3 text-right text-rose-400 font-bold">3rd Down %</th>
-                <th className="py-3 px-3 text-right">TO Margin</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 bg-[#121216]">
-              {filteredRankings.map((team, idx) => (
-                <tr key={team.team} className="hover:bg-white/5 transition-colors">
-                  <td className="py-2.5 px-3 font-bold text-slate-400">#{idx + 1}</td>
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center gap-2">
-                      <TeamLogo teamKey={team.team} size="xs" shape="circle" />
-                      <span className="font-bold text-white">{team.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3 text-center text-slate-400">{team.conference}</td>
-                  <td className="py-2.5 px-3 text-right font-black text-emerald-400 text-sm">
-                    {team.avgTop}
-                  </td>
-                  <td className="py-2.5 px-3 text-right text-white">{team.drivesPerGame}</td>
-                  <td className="py-2.5 px-3 text-right font-bold text-amber-400">{team.playsPerDrive}</td>
-                  <td className="py-2.5 px-3 text-right text-slate-300">{team.yardsPerDrive}</td>
-                  <td className="py-2.5 px-3 text-right text-slate-400">{team.threeAndOutPct}%</td>
-                  <td className="py-2.5 px-3 text-right font-bold text-rose-400">{team.thirdDownConvPct}%</td>
-                  <td className="py-2.5 px-3 text-right font-bold text-slate-200">
-                    {team.turnoverMargin > 0 ? `+${team.turnoverMargin}` : team.turnoverMargin}
-                  </td>
+        {isRankingsMinimized ? (
+          <div
+            onClick={() => setIsRankingsMinimized(false)}
+            className="p-3 bg-black/40 text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300 rounded-xl border border-white/5"
+          >
+            <span>🏆 Possession Standings Minimized ({filteredRankings.length} Teams) &bull; <strong className="text-emerald-400 underline">Click to Expand</strong></span>
+          </div>
+        ) : (
+          /* Rankings Table */
+          <div className="overflow-x-auto rounded-xl border border-white/10">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="bg-[#18181e] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/10">
+                <tr>
+                  <th className="py-3 px-3">Rank</th>
+                  <th className="py-3 px-3">Team</th>
+                  <th className="py-3 px-3 text-center">Conf</th>
+                  <th className="py-3 px-3 text-right text-emerald-400 font-bold">Avg TOP</th>
+                  <th className="py-3 px-3 text-right">Drives/G</th>
+                  <th className="py-3 px-3 text-right text-amber-400 font-bold">Plays/Drive</th>
+                  <th className="py-3 px-3 text-right">Yards/Drive</th>
+                  <th className="py-3 px-3 text-right">3 &amp; Out %</th>
+                  <th className="py-3 px-3 text-right text-rose-400 font-bold">3rd Down %</th>
+                  <th className="py-3 px-3 text-right">TO Margin</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-white/5 bg-[#121216]">
+                {filteredRankings.map((team, idx) => (
+                  <tr key={team.team} className="hover:bg-white/5 transition-colors">
+                    <td className="py-2.5 px-3 font-bold text-slate-400">#{idx + 1}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-2">
+                        <TeamLogo teamKey={team.team} size="xs" shape="circle" />
+                        <span className="font-bold text-white">{team.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center text-slate-400">{team.conference}</td>
+                    <td className="py-2.5 px-3 text-right font-black text-emerald-400 text-sm">
+                      {team.avgTop}
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-white">{team.drivesPerGame}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-amber-400">{team.playsPerDrive}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-300">{team.yardsPerDrive}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-400">{team.threeAndOutPct}%</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-rose-400">{team.thirdDownConvPct}%</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-200">
+                      {team.turnoverMargin > 0 ? `+${team.turnoverMargin}` : team.turnoverMargin}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

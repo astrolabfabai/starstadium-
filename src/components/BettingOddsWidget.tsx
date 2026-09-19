@@ -606,6 +606,12 @@ export const BettingOddsWidget: React.FC<BettingOddsWidgetProps> = ({
     fetchLiveSportsDataOdds();
   }, [selectedSeason]);
 
+  useEffect(() => {
+    if (gameKeyFilter) {
+      setSelectedGameKey(gameKeyFilter);
+    }
+  }, [gameKeyFilter]);
+
   const activeFocusedGame =
     oddsGames.find((g) => g.gameKey === selectedGameKey) || oddsGames[0];
 

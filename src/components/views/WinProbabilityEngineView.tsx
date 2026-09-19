@@ -35,7 +35,9 @@ import {
   Layers,
   Sliders,
   AlertTriangle,
-  Share2
+  Share2,
+  Minus,
+  Plus
 } from 'lucide-react';
 
 interface WinProbabilityEngineViewProps {
@@ -84,6 +86,12 @@ export const WinProbabilityEngineView: React.FC<WinProbabilityEngineViewProps> =
   const [selectedPlayId, setSelectedPlayId] = useState<number | null>(null);
   const [showEpaOverlay, setShowEpaOverlay] = useState<boolean>(false);
   const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
+
+  // Minimize / Expand Module States
+  const [isSlateMinimized, setIsSlateMinimized] = useState<boolean>(false);
+  const [isChartMinimized, setIsChartMinimized] = useState<boolean>(false);
+  const [isTurningPointsMinimized, setIsTurningPointsMinimized] = useState<boolean>(false);
+  const [isTelemetryMinimized, setIsTelemetryMinimized] = useState<boolean>(false);
 
   // 1. Ingest Game Feeds from Server / SportsData / ESPN / Mock
   const fetchGameFeed = async () => {
@@ -391,25 +399,39 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
             <span className="text-slate-500 text-[11px]">({filteredGames.length} games)</span>
           </div>
 
-          {/* Status Filter Chips */}
-          <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
-            {(['ALL', 'LIVE', 'FINAL'] as const).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setGameStatusFilter(filter)}
-                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition ${
-                  gameStatusFilter === filter
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            {/* Status Filter Chips */}
+            {!isSlateMinimized && (
+              <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
+                {(['ALL', 'LIVE', 'FINAL'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setGameStatusFilter(filter)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition ${
+                      gameStatusFilter === filter
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Minimize / Expand Button */}
+            <button
+              onClick={() => setIsSlateMinimized(!isSlateMinimized)}
+              className="p-1 rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition"
+              title={isSlateMinimized ? 'Expand Game Slate' : 'Minimize Game Slate'}
+            >
+              {isSlateMinimized ? <Plus className="w-3.5 h-3.5 text-amber-400" /> : <Minus className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </div>
 
         {/* Scrollable Game Slate Ribbon - Compact Ticker */}
+        {!isSlateMinimized && (
         <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-white/10">
           {filteredGames.map((g) => {
             const isSelected = g.gameKey === activeGame.gameKey;
@@ -479,6 +501,7 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
             );
           })}
         </div>
+        )}
       </div>
 
       {/* 3. Active Matchup Focus Banner & Real-Time Win Probability Meter */}
@@ -685,14 +708,24 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
           <div className="flex items-center gap-1.5">
             <Award className="w-3.5 h-3.5 text-amber-400" />
             <h3 className="text-xs font-bold text-white uppercase font-mono tracking-wider">
-              Top 5 Game-Deciding Turning Points ($\Delta$WPA Leaders)
+              Top 5 Game-Deciding Turning Points (&Delta;WPA Leaders)
             </h3>
           </div>
-          <span className="text-[10px] text-slate-400 font-mono">
-            Plays with the largest net win probability impact
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-[10px] text-slate-400 font-mono">
+              Plays with largest net win probability shift
+            </span>
+            <button
+              onClick={() => setIsTurningPointsMinimized(!isTurningPointsMinimized)}
+              className="p-1 rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition"
+              title={isTurningPointsMinimized ? 'Expand Turning Points' : 'Minimize Turning Points'}
+            >
+              {isTurningPointsMinimized ? <Plus className="w-3.5 h-3.5 text-amber-400" /> : <Minus className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
+        {!isTurningPointsMinimized && (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
             <thead>
@@ -766,6 +799,7 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* 7. Real-Time Game Telemetry & Probability Drivers */}
@@ -783,16 +817,27 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
             </p>
           </div>
 
-          <button
-            onClick={handleCopySummary}
-            className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 text-[11px] font-mono font-bold flex items-center gap-1.5 transition"
-          >
-            <Share2 className="w-3 h-3 text-sky-400" />
-            <span>{copiedSummary ? 'Copied!' : 'Copy Telemetry'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopySummary}
+              className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 text-[11px] font-mono font-bold flex items-center gap-1.5 transition"
+            >
+              <Share2 className="w-3 h-3 text-sky-400" />
+              <span>{copiedSummary ? 'Copied!' : 'Copy Telemetry'}</span>
+            </button>
+
+            <button
+              onClick={() => setIsTelemetryMinimized(!isTelemetryMinimized)}
+              className="p-1 rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition"
+              title={isTelemetryMinimized ? 'Expand Telemetry' : 'Minimize Telemetry'}
+            >
+              {isTelemetryMinimized ? <Plus className="w-3.5 h-3.5 text-sky-400" /> : <Minus className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
         {/* Top Swing Plays Highlights */}
+        {!isTelemetryMinimized && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {winProbSummary.topSwingPlays.slice(0, 4).map((play, idx) => {
             const isHomeShift = play.deltaHomeWp > 0;
@@ -825,6 +870,7 @@ Biggest Swing: ${winProbSummary.biggestHomeSwing?.description || 'N/A'}`;
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

@@ -4,7 +4,9 @@ import {
   Flame,
   Target,
   ChevronDown,
-  Award
+  Award,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { TeamLogo } from '../TeamLogo';
 import { SCHEDULES_DATA } from '../../data/sportsDataMock';
@@ -57,7 +59,14 @@ export default function RedZoneView({
   onSelectGameKey
 }: RedZoneViewProps) {
   const games: GameSchedule[] = useMemo(() => {
-    return (SCHEDULES_DATA && SCHEDULES_DATA[selectedSeason]) || (SCHEDULES_DATA && SCHEDULES_DATA['2026REG']) || [];
+    const s = String(selectedSeason || '');
+    return SCHEDULES_DATA.filter((g) => {
+      if (s.startsWith('2026')) return g.Season === 2026;
+      if (s.startsWith('2025')) return g.Season === 2025;
+      if (s.startsWith('2024')) return g.Season === 2024;
+      if (s.startsWith('2023')) return g.Season === 2023;
+      return true;
+    });
   }, [selectedSeason]);
 
   const activeGame: GameSchedule | undefined = useMemo(() => {
@@ -67,6 +76,11 @@ export default function RedZoneView({
     }
     return games[0];
   }, [games, selectedGameKey]);
+
+  // Minimize state for each widget/module
+  const [isFieldMinimized, setIsFieldMinimized] = useState(false);
+  const [isMatchupStatsMinimized, setIsMatchupStatsMinimized] = useState(false);
+  const [isRankingsMinimized, setIsRankingsMinimized] = useState(false);
 
   // Current down, distance, yardline in Red Zone
   const [currentYardLine, setCurrentYardLine] = useState<number>(12);
@@ -144,90 +158,114 @@ export default function RedZoneView({
       </div>
 
       {/* MATCHUP RED ZONE BENCHMARK CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Away Team Card */}
-        <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <div className="flex items-center gap-3">
-              <TeamLogo teamKey={awayTeamKey} size="md" shape="circle" />
-              <div>
-                <h3 className="font-bold text-white text-base">{awayTeamKey} Red Zone</h3>
-                <span className="text-xs font-mono text-slate-400">Away &bull; Scoring Efficiency</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-2xl font-black font-mono text-rose-400">{awayRzPct}%</span>
-              <p className="text-[10px] font-mono uppercase text-slate-400">TD Rate</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5 text-center font-mono">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
-              <span className="text-[10px] text-slate-400 uppercase block">Trips</span>
-              <span className="text-lg font-bold text-white">{awayRzTrips}</span>
-            </div>
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
-              <span className="text-[10px] text-emerald-400 uppercase block">TDs</span>
-              <span className="text-lg font-bold text-emerald-400">{awayRzTds}</span>
-            </div>
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
-              <span className="text-[10px] text-amber-400 uppercase block">FGs</span>
-              <span className="text-lg font-bold text-amber-400">{awayRzFgs}</span>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs font-mono text-slate-400">
-              <span>Goal-to-Go Conversion</span>
-              <span className="text-white font-bold">100% (2/2)</span>
-            </div>
-            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }} />
-            </div>
-          </div>
+      <div className="space-y-2">
+        <div className="flex justify-between items-center px-1">
+          <span className="text-xs font-mono font-bold uppercase text-slate-400">
+            📊 Matchup Red Zone Benchmark
+          </span>
+          <button
+            onClick={() => setIsMatchupStatsMinimized(!isMatchupStatsMinimized)}
+            className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
+          >
+            {isMatchupStatsMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+            <span>{isMatchupStatsMinimized ? 'Expand Stats' : 'Minimize Stats'}</span>
+          </button>
         </div>
 
-        {/* Home Team Card */}
-        <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <div className="flex items-center gap-3">
-              <TeamLogo teamKey={homeTeamKey} size="md" shape="circle" />
-              <div>
-                <h3 className="font-bold text-white text-base">{homeTeamKey} Red Zone</h3>
-                <span className="text-xs font-mono text-slate-400">Home &bull; Scoring Efficiency</span>
+        {!isMatchupStatsMinimized ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Away Team Card */}
+            <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <TeamLogo teamKey={awayTeamKey} size="md" shape="circle" />
+                  <div>
+                    <h3 className="font-bold text-white text-base">{awayTeamKey} Red Zone</h3>
+                    <span className="text-xs font-mono text-slate-400">Away &bull; Scoring Efficiency</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black font-mono text-rose-400">{awayRzPct}%</span>
+                  <p className="text-[10px] font-mono uppercase text-slate-400">TD Rate</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5 text-center font-mono">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 uppercase block">Trips</span>
+                  <span className="text-lg font-bold text-white">{awayRzTrips}</span>
+                </div>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
+                  <span className="text-[10px] text-emerald-400 uppercase block">TDs</span>
+                  <span className="text-lg font-bold text-emerald-400">{awayRzTds}</span>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
+                  <span className="text-[10px] text-amber-400 uppercase block">FGs</span>
+                  <span className="text-lg font-bold text-amber-400">{awayRzFgs}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-mono text-slate-400">
+                  <span>Goal-to-Go Conversion</span>
+                  <span className="text-white font-bold">100% (2/2)</span>
+                </div>
+                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }} />
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-2xl font-black font-mono text-rose-400">{homeRzPct}%</span>
-              <p className="text-[10px] font-mono uppercase text-slate-400">TD Rate</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2.5 text-center font-mono">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
-              <span className="text-[10px] text-slate-400 uppercase block">Trips</span>
-              <span className="text-lg font-bold text-white">{homeRzTrips}</span>
-            </div>
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
-              <span className="text-[10px] text-emerald-400 uppercase block">TDs</span>
-              <span className="text-lg font-bold text-emerald-400">{homeRzTds}</span>
-            </div>
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
-              <span className="text-[10px] text-amber-400 uppercase block">FGs</span>
-              <span className="text-lg font-bold text-amber-400">{homeRzFgs}</span>
-            </div>
-          </div>
+            {/* Home Team Card */}
+            <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <TeamLogo teamKey={homeTeamKey} size="md" shape="circle" />
+                  <div>
+                    <h3 className="font-bold text-white text-base">{homeTeamKey} Red Zone</h3>
+                    <span className="text-xs font-mono text-slate-400">Home &bull; Scoring Efficiency</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black font-mono text-rose-400">{homeRzPct}%</span>
+                  <p className="text-[10px] font-mono uppercase text-slate-400">TD Rate</p>
+                </div>
+              </div>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs font-mono text-slate-400">
-              <span>Goal-to-Go Conversion</span>
-              <span className="text-white font-bold">75% (3/4)</span>
-            </div>
-            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '75%' }} />
+              <div className="grid grid-cols-3 gap-2.5 text-center font-mono">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 uppercase block">Trips</span>
+                  <span className="text-lg font-bold text-white">{homeRzTrips}</span>
+                </div>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
+                  <span className="text-[10px] text-emerald-400 uppercase block">TDs</span>
+                  <span className="text-lg font-bold text-emerald-400">{homeRzTds}</span>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
+                  <span className="text-[10px] text-amber-400 uppercase block">FGs</span>
+                  <span className="text-lg font-bold text-amber-400">{homeRzFgs}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-mono text-slate-400">
+                  <span>Goal-to-Go Conversion</span>
+                  <span className="text-white font-bold">75% (3/4)</span>
+                </div>
+                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '75%' }} />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div
+            onClick={() => setIsMatchupStatsMinimized(false)}
+            className="p-3 bg-[#121216] border border-white/10 rounded-xl text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300"
+          >
+            <span>📊 Matchup Stats Minimized ({awayTeamKey}: {awayRzPct}% TD Rate &bull; {homeTeamKey}: {homeRzPct}% TD Rate) &bull; <strong className="text-rose-400 underline">Click to Expand</strong></span>
+          </div>
+        )}
       </div>
 
       {/* 100-YARD RED ZONE TACTICAL FIELD VISUALIZER (NO TEAM LOGOS ON FIELD) */}
@@ -248,9 +286,17 @@ export default function RedZoneView({
             </p>
           </div>
 
-          {/* Interactive Yard Line Controls */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-300">
+            <button
+              onClick={() => setIsFieldMinimized(!isFieldMinimized)}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
+            >
+              {isFieldMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+              <span>{isFieldMinimized ? 'Expand Field' : 'Minimize Field'}</span>
+            </button>
+            {!isFieldMinimized && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-300">
               <span className="px-1.5 text-slate-400 text-[10px]">BALL ON:</span>
               {[18, 12, 5, 2].map((yd) => (
                 <button
@@ -286,10 +332,21 @@ export default function RedZoneView({
                 </button>
               ))}
             </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Live Situation Pill */}
+        {isFieldMinimized ? (
+          <div
+            onClick={() => setIsFieldMinimized(false)}
+            className="p-3 bg-black/40 text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300"
+          >
+            <span>🏈 Red Zone Field Minimized (Ball at Opponent {currentYardLine} yd Line) &bull; <strong className="text-rose-400 underline">Click to Expand</strong></span>
+          </div>
+        ) : (
+          <div className="p-4 sm:p-5 pt-0 space-y-4">
+            {/* Live Situation Pill */}
         <div className="bg-[#18181e] border border-white/10 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
@@ -438,6 +495,8 @@ export default function RedZoneView({
           </svg>
         </div>
       </div>
+      )}
+    </div>
 
       {/* NFL LEAGUE-WIDE RED ZONE EFFICIENCY TABLE */}
       <div className="bg-[#121216] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
@@ -452,51 +511,71 @@ export default function RedZoneView({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Conference Filter */}
-            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
-              {(['ALL', 'AFC', 'NFC'] as const).map((conf) => (
-                <button
-                  key={conf}
-                  onClick={() => setSelectedConference(conf)}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    selectedConference === conf
-                      ? 'bg-rose-500 text-white'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {conf}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsRankingsMinimized(!isRankingsMinimized)}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1 border border-white/10"
+            >
+              {isRankingsMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+              <span>{isRankingsMinimized ? 'Expand Standings' : 'Minimize Standings'}</span>
+            </button>
 
-            {/* Sort Toggle */}
-            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-400">
-              <span className="px-1 text-[10px]">SORT:</span>
-              <button
-                onClick={() => setSortField('tdPct')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'tdPct' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                TD%
-              </button>
-              <button
-                onClick={() => setSortField('trips')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'trips' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                Trips
-              </button>
-              <button
-                onClick={() => setSortField('epaPerPlay')}
-                className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'epaPerPlay' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
-              >
-                EPA
-              </button>
-            </div>
+            {!isRankingsMinimized && (
+              <>
+                {/* Conference Filter */}
+                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
+                  {(['ALL', 'AFC', 'NFC'] as const).map((conf) => (
+                    <button
+                      key={conf}
+                      onClick={() => setSelectedConference(conf)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                        selectedConference === conf
+                          ? 'bg-rose-500 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {conf}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sort Toggle */}
+                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono text-slate-400">
+                  <span className="px-1 text-[10px]">SORT:</span>
+                  <button
+                    onClick={() => setSortField('tdPct')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'tdPct' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    TD%
+                  </button>
+                  <button
+                    onClick={() => setSortField('trips')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'trips' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    Trips
+                  </button>
+                  <button
+                    onClick={() => setSortField('epaPerPlay')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${sortField === 'epaPerPlay' ? 'bg-amber-500 text-slate-950' : 'hover:text-white'}`}
+                  >
+                    EPA
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Table Container */}
-        <div className="overflow-x-auto rounded-xl border border-white/10">
+        {isRankingsMinimized ? (
+          <div
+            onClick={() => setIsRankingsMinimized(false)}
+            className="p-3 bg-black/40 text-center cursor-pointer hover:bg-white/5 text-xs font-mono text-slate-300 rounded-xl border border-white/5"
+          >
+            <span>🏆 Red Zone Standings Minimized ({filteredRankings.length} Teams) &bull; <strong className="text-amber-400 underline">Click to Expand</strong></span>
+          </div>
+        ) : (
+          /* Table Container */
+          <div className="overflow-x-auto rounded-xl border border-white/10">
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-[#18181e] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/10">
               <tr>
@@ -539,6 +618,7 @@ export default function RedZoneView({
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );
