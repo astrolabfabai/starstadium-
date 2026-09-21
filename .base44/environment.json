@@ -1,0 +1,17 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/api/health",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "GEMINI_API_KEY",
+      "description": "Google Gemini API key for AI sports analyst features. Get it from Google AI Studio (aistudio.google.com) > API keys. Without it, AI chat falls back to simulated responses.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "SPORTSDATA_API_KEY",
+      "description": "SportsData.io Ocp-Apim-Subscription-Key for live NFL API feeds. Get it from SportsData.io > My Account > API Keys. Without it, the app uses mock data.",
+      "requiredAtBoot": false
+    }
+  ]
+}
