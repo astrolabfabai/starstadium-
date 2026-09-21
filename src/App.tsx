@@ -10,6 +10,13 @@ import { ScoringNotificationProvider } from './context/ScoringNotificationContex
 import { ScoringToastContainer } from './components/notifications/ScoringToastContainer';
 import { ScoringNotificationCenterModal } from './components/notifications/ScoringNotificationCenterModal';
 import { NotificationBellButton } from './components/notifications/NotificationBellButton';
+import { RealtimeSyncProvider, useRealtimeSync } from './context/RealtimeSyncContext';
+import { RealtimeSyncBar } from './components/RealtimeSyncBar';
+import { RealtimeArchitectureModal } from './components/RealtimeArchitectureModal';
+import { UserFriendlyUiModal } from './components/UserFriendlyUiModal';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { QuickGameSwitcherModal } from './components/QuickGameSwitcherModal';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { Menu, Sparkles, User, Shield, RefreshCw, CheckCircle2, Calendar, Radio } from 'lucide-react';
 
 interface CurrentSeasonInfo {
@@ -45,8 +52,22 @@ function AppContent() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>(new Date().toLocaleTimeString());
   const [refreshNotification, setRefreshNotification] = useState<string | null>(null);
 
+  const {
+    activeGameKey,
+    setActiveGameKey,
+    isUiModalOpen,
+    setIsUiModalOpen,
+    isShortcutsModalOpen,
+    setIsShortcutsModalOpen,
+    isGameSwitcherOpen,
+    setIsGameSwitcherOpen,
+    isArchitectureModalOpen,
+    setIsArchitectureModalOpen
+  } = useRealtimeSync();
+
   const handleSelectGame = (gameKey: string) => {
     setSelectedGameKey(gameKey);
+    setActiveGameKey(gameKey);
     setActiveView('playbyplay');
   };
 
@@ -119,6 +140,23 @@ function AppContent() {
     setAiContextData(context || null);
     setIsAiAssistantOpen(true);
   };
+
+  useGlobalShortcuts({
+    onViewChange: (view) => setActiveView(view),
+    onToggleGameSwitcher: () => setIsGameSwitcherOpen((prev) => !prev),
+    onToggleShortcutsModal: () => setIsShortcutsModalOpen((prev) => !prev),
+    onToggleUiModal: () => setIsUiModalOpen((prev) => !prev),
+    onRefresh: handleRefresh,
+    onCloseModals: () => {
+      setIsUiModalOpen(false);
+      setIsShortcutsModalOpen(false);
+      setIsGameSwitcherOpen(false);
+      setIsArchitectureModalOpen(false);
+      setIsInspectorOpen(false);
+      setIsAiAssistantOpen(false);
+      setIsOllamaOpen(false);
+    }
+  });
 
   return (
     <div className="min-h-screen bg-[#09090b] text-slate-200 font-sans selection:bg-amber-500 selection:text-slate-950 flex flex-col lg:flex-row relative">
@@ -268,6 +306,9 @@ function AppContent() {
           </div>
         )}
 
+        {/* Real-Time Telemetry Bar (Applied from 10 Leading Platforms) */}
+        <RealtimeSyncBar />
+
         {/* Dynamic View Canvas */}
         <main className="flex-1 p-2.5 sm:p-4 lg:p-5 max-w-7xl w-full mx-auto space-y-3.5">
           <GamedayCommandBar
@@ -306,6 +347,9 @@ function AppContent() {
         </footer>
       </div>
 
+      {/* 10 Top Platforms Real-Time Architecture Deep Dive Modal */}
+      <RealtimeArchitectureModal />
+
       {/* API Inspector Modal */}
       <ApiInspectorModal
         isOpen={isInspectorOpen}
@@ -325,6 +369,28 @@ function AppContent() {
         isOpen={isOllamaOpen}
         onClose={() => setIsOllamaOpen(false)}
       />
+
+      {/* 10 Top Platforms UI/UX Best Practices Modal */}
+      <UserFriendlyUiModal
+        isOpen={isUiModalOpen}
+        onClose={() => setIsUiModalOpen(false)}
+        onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+      />
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+      />
+
+      {/* Quick Matchup Switcher Modal Drawer */}
+      <QuickGameSwitcherModal
+        isOpen={isGameSwitcherOpen}
+        onClose={() => setIsGameSwitcherOpen(false)}
+        selectedGameKey={selectedGameKey}
+        onSelectGameKey={handleSelectGame}
+        seasonYear={currentSeasonInfo.year}
+      />
     </div>
   );
 }
@@ -332,7 +398,9 @@ function AppContent() {
 export default function App() {
   return (
     <ScoringNotificationProvider>
-      <AppContent />
+      <RealtimeSyncProvider>
+        <AppContent />
+      </RealtimeSyncProvider>
     </ScoringNotificationProvider>
   );
 }

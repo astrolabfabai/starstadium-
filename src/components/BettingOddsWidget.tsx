@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SeasonCode, SEASONS_LIST } from '../types';
+import { useRealtimeSync } from '../context/RealtimeSyncContext';
 import {
   LineChart,
   Line,
@@ -572,6 +573,7 @@ export const BettingOddsWidget: React.FC<BettingOddsWidgetProps> = ({
   gameKeyFilter,
   onSelectGameForPlayByPlay
 }) => {
+  const { selectedGame: realtimeGame, games: realtimeGames, latencyMs, tickCount } = useRealtimeSync();
   const [selectedSportsbook, setSelectedSportsbook] = useState<SportsbookName>('ALL');
   const [selectedViewMode, setSelectedViewMode] = useState<
     'cards' | 'table' | 'line_movement' | 'sharp_splits' | 'line_shopping'
@@ -725,6 +727,60 @@ export const BettingOddsWidget: React.FC<BettingOddsWidgetProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Real-Time Telemetry & Market Suspension Bar (Action Network & FanDuel pattern) */}
+      {realtimeGame && (
+        <div className="bg-[#0b0d12] border border-sky-500/20 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Market Status Pill */}
+            <span
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 border ${
+                realtimeGame.marketStatus === 'SUSPENDED'
+                  ? 'bg-rose-950/70 border-rose-500/40 text-rose-300 animate-pulse'
+                  : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${realtimeGame.marketStatus === 'SUSPENDED' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+              <span>
+                {realtimeGame.marketStatus === 'SUSPENDED'
+                  ? '🔒 IN-PLAY SUSPENDED (RED ZONE SNAP)'
+                  : '🟢 IN-PLAY WAGERING OPEN'}
+              </span>
+            </span>
+
+            {/* Line Movement Alert (Action Network Model) */}
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border ${
+                realtimeGame.lineMovement === 'UP'
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                  : realtimeGame.lineMovement === 'DOWN'
+                  ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                  : 'bg-white/5 text-slate-400 border-white/10'
+              }`}
+            >
+              {realtimeGame.lineMovement === 'UP' ? '📈 STEAM MOVE: LINE MOVED UP' : '📉 LINE MOVED DOWN'}
+            </span>
+
+            {/* Active Matchup & Live Score */}
+            <span className="text-white font-bold">
+              {realtimeGame.awayTeam} {realtimeGame.awayScore} @ {realtimeGame.homeTeam} {realtimeGame.homeScore} ({realtimeGame.quarter} {realtimeGame.clockDisplay})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Live In-Play Spread & Total */}
+            <div className="flex items-center gap-2 text-slate-300 text-[11px]">
+              <span>In-Play Spread: <strong className="text-amber-400">{realtimeGame.spread > 0 ? `+${realtimeGame.spread}` : realtimeGame.spread}</strong></span>
+              <span className="text-slate-600">|</span>
+              <span>O/U: <strong className="text-amber-400">{realtimeGame.overUnder}</strong></span>
+            </div>
+
+            <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
+              ⚡ {latencyMs}ms &bull; Tick #{tickCount}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Bookmaker Toggle Pill Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#09090b] p-3 rounded-2xl border border-white/10">

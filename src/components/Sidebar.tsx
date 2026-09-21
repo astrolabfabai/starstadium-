@@ -29,6 +29,7 @@ import {
   Flame
 } from 'lucide-react';
 import { useScoringNotifications } from '../context/ScoringNotificationContext';
+import { useRealtimeSync } from '../context/RealtimeSyncContext';
 
 interface SidebarProps {
   activeView: ViewMode;
@@ -57,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
   const { unreadCount, setIsNotificationCenterOpen, isNotificationCenterOpen } = useScoringNotifications();
+  const { setIsGameSwitcherOpen, setIsUiModalOpen, setIsShortcutsModalOpen } = useRealtimeSync();
 
   const currentSeasonObj = SEASONS_LIST.find((s) => s.code === selectedSeason) || SEASONS_LIST[0];
 
@@ -285,6 +287,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             );
           })}
+
+          {/* Quick Tools & 10 UI Principles */}
+          {!isCollapsed && (
+            <div className="pt-2 border-t border-white/5 space-y-1">
+              <div className="px-2 py-1 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                <span>🛠️</span>
+                <span>Pro Tools</span>
+              </div>
+              <button
+                onClick={() => {
+                  setIsGameSwitcherOpen(true);
+                  onCloseMobile();
+                }}
+                className="w-full px-3 py-1.5 rounded-xl text-left flex items-center justify-between text-xs text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🏈</span>
+                  <span>Game Switcher</span>
+                </span>
+                <kbd className="px-1.5 py-0.2 rounded bg-black/60 border border-white/10 text-amber-400 font-mono text-[10px]">G</kbd>
+              </button>
+              <button
+                onClick={() => {
+                  setIsUiModalOpen(true);
+                  onCloseMobile();
+                }}
+                className="w-full px-3 py-1.5 rounded-xl text-left flex items-center justify-between text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <span>✨</span>
+                  <span>10 UI Principles</span>
+                </span>
+                <kbd className="px-1.5 py-0.2 rounded bg-black/60 border border-white/10 text-amber-400 font-mono text-[10px]">U</kbd>
+              </button>
+              <button
+                onClick={() => {
+                  setIsShortcutsModalOpen(true);
+                  onCloseMobile();
+                }}
+                className="w-full px-3 py-1.5 rounded-xl text-left flex items-center justify-between text-xs text-sky-300 hover:text-sky-200 hover:bg-sky-500/10 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <span>⌨️</span>
+                  <span>Keyboard Hotkeys</span>
+                </span>
+                <kbd className="px-1.5 py-0.2 rounded bg-black/60 border border-white/10 text-sky-400 font-mono text-[10px]">?</kbd>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Sidebar Footer with Live Gameday Snapshot */}

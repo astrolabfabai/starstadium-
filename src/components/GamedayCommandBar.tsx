@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import { ViewMode, SeasonCode, GameSchedule } from '../types';
 import { SCHEDULES_DATA } from '../data/sportsDataMock';
 import { TeamLogo } from './TeamLogo';
+import { useRealtimeSync } from '../context/RealtimeSyncContext';
 import {
   ChevronDown,
   ChevronUp,
   Sparkles,
   RefreshCw,
   SlidersHorizontal,
-  Calendar
+  Calendar,
+  Clock,
+  Radio
 } from 'lucide-react';
 
 interface GamedayCommandBarProps {
@@ -49,10 +52,22 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
 
   const currentSeasonGames = SCHEDULES_DATA.filter((g) => g.Season === seasonYear);
 
+  const { games } = useRealtimeSync();
+
   const activeGame: GameSchedule =
     currentSeasonGames.find((g) => g.GameKey === selectedGameKey) ||
     currentSeasonGames[0] ||
     SCHEDULES_DATA[0];
+
+  // Overlay live streaming game telemetry if active
+  const liveSyncData = games[selectedGameKey];
+  const displayAwayScore = liveSyncData ? liveSyncData.awayScore : (activeGame.AwayScore ?? 0);
+  const displayHomeScore = liveSyncData ? liveSyncData.homeScore : (activeGame.HomeScore ?? 0);
+  const displayQuarter = liveSyncData ? liveSyncData.quarter : (activeGame.Quarter || 'Q4');
+  const displayClock = liveSyncData ? liveSyncData.clockDisplay : (activeGame.TimeRemaining || activeGame.Clock || '02:15');
+  const displayDownDistance = liveSyncData && liveSyncData.down > 0
+    ? `${liveSyncData.down}th & ${liveSyncData.distance} (Ball at ${liveSyncData.yardLineSide} ${liveSyncData.yardLine})`
+    : activeGame.DownDistance;
 
   const visibleGames = currentSeasonGames.filter((g) => {
     if (statusFilter === 'LIVE') return g.Status === 'InProgress';
@@ -68,14 +83,14 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
 
   // Primary 5 Requested Gameday Menus in Exact Order + Core Hubs
   const navTabs = [
-    { id: 'plays', label: 'Plays', emoji: '🏈', badge: 'FILM' },
-    { id: 'red_zone', label: 'Red Zone', emoji: '🎯', badge: 'RZ' },
-    { id: 'possession', label: 'Possession', emoji: '⏱️', badge: 'TOP' },
-    { id: 'win_probability', label: 'Win%', emoji: '📈', badge: 'LIVE' },
-    { id: 'betting', label: 'Odds', emoji: '💰', badge: 'LINES' },
-    { id: 'scoreboard', label: 'Scores', emoji: '🏟️', badge: null },
-    { id: 'standings', label: 'Standings', emoji: '🏆', badge: null },
-    { id: 'dashboard', label: 'All Grid', emoji: '🎛️', badge: null }
+    { id: 'plays', label: 'Plays', emoji: '🏈', badge: 'FILM', keyHint: '1' },
+    { id: 'red_zone', label: 'Red Zone', emoji: '🎯', badge: 'RZ', keyHint: '2' },
+    { id: 'possession', label: 'Possession', emoji: '⏱️', badge: 'TOP', keyHint: '3' },
+    { id: 'win_probability', label: 'Win%', emoji: '📈', badge: 'LIVE', keyHint: '4' },
+    { id: 'betting', label: 'Odds', emoji: '💰', badge: 'LINES', keyHint: '5' },
+    { id: 'scoreboard', label: 'Scores', emoji: '🏟️', badge: null, keyHint: '6' },
+    { id: 'standings', label: 'Standings', emoji: '🏆', badge: null, keyHint: '7' },
+    { id: 'dashboard', label: 'All Grid', emoji: '🎛️', badge: null, keyHint: '8' }
   ] as const;
 
   return (
@@ -97,7 +112,7 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
               <div className="flex items-center gap-1.5">
                 <TeamLogo teamKey={activeGame.AwayTeam} size="xs" shape="circle" />
                 <span className="font-mono font-bold text-white text-xs">{activeGame.AwayTeam}</span>
-                <span className="font-mono font-black text-amber-400 text-xs">{activeGame.AwayScore ?? 0}</span>
+                <span className="font-mono font-black text-amber-400 text-xs">{displayAwayScore}</span>
               </div>
 
               <span className="text-slate-500 font-mono text-[10px]">@</span>
@@ -106,16 +121,18 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
               <div className="flex items-center gap-1.5">
                 <TeamLogo teamKey={activeGame.HomeTeam} size="xs" shape="circle" />
                 <span className="font-mono font-bold text-white text-xs">{activeGame.HomeTeam}</span>
-                <span className="font-mono font-black text-amber-400 text-xs">{activeGame.HomeScore ?? 0}</span>
+                <span className="font-mono font-black text-amber-400 text-xs">{displayHomeScore}</span>
               </div>
             </div>
 
             {/* Quarter / Clock or Status */}
             <div className="flex items-center gap-1.5 text-xs font-mono">
               {activeGame.Status === 'InProgress' ? (
-                <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold flex items-center gap-1">
+                <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                  {activeGame.Quarter || 'Q4'} {activeGame.TimeRemaining || activeGame.Clock || '02:15'}
+                  <Clock className="w-3 h-3 text-rose-400" />
+                  <span>{displayQuarter}</span>
+                  <span className="text-white font-bold">{displayClock}</span>
                 </span>
               ) : activeGame.Status === 'Final' ? (
                 <span className="px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-bold text-[11px]">
@@ -127,9 +144,9 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
                 </span>
               )}
 
-              {activeGame.DownDistance && (
+              {displayDownDistance && (
                 <span className="text-slate-300 hidden md:inline font-mono text-[11px]">
-                  &bull; {activeGame.DownDistance}
+                  &bull; {displayDownDistance}
                 </span>
               )}
 
@@ -297,6 +314,15 @@ export const GamedayCommandBar: React.FC<GamedayCommandBarProps> = ({
                   >
                     {tab.badge}
                   </span>
+                )}
+                {tab.keyHint && (
+                  <kbd
+                    className={`text-[9px] font-mono px-1 py-0.2 rounded hidden lg:inline ${
+                      isActive ? 'bg-black/30 text-slate-900' : 'bg-black/40 text-slate-400'
+                    }`}
+                  >
+                    {tab.keyHint}
+                  </kbd>
                 )}
               </button>
             );

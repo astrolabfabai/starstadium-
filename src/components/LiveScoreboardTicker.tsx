@@ -3,6 +3,7 @@ import { Radio, RefreshCw, Clock, Flame, ChevronRight, Activity, Volume2, Volume
 import { SCHEDULES_DATA } from '../data/sportsDataMock';
 import { GameCenterModal } from './GameCenterModal';
 import { TeamLogo } from './TeamLogo';
+import { useRealtimeSync } from '../context/RealtimeSyncContext';
 
 export interface LiveGameCardData {
   id: string;
@@ -200,7 +201,25 @@ export const LiveScoreboardTicker: React.FC<LiveScoreboardTickerProps> = ({ onOp
     return () => clearInterval(interval);
   }, [hasLiveGames]);
 
-  const filteredGames = games.filter((g) => {
+  const { games: realtimeGames } = useRealtimeSync();
+
+  const synchronizedGames = games.map((g) => {
+    const liveUpdate = realtimeGames[g.gameKey];
+    if (!liveUpdate) return g;
+    return {
+      ...g,
+      awayTeam: { ...g.awayTeam, score: liveUpdate.awayScore },
+      homeTeam: { ...g.homeTeam, score: liveUpdate.homeScore },
+      quarter: liveUpdate.quarter,
+      clock: liveUpdate.clockDisplay,
+      clockSeconds: liveUpdate.clockSeconds,
+      status: 'InProgress' as const,
+      isRedZone: liveUpdate.isRedZone,
+      downDistance: liveUpdate.down > 0 ? `${liveUpdate.down}th & ${liveUpdate.distance} (${liveUpdate.yardLineSide} ${liveUpdate.yardLine})` : g.downDistance
+    };
+  });
+
+  const filteredGames = synchronizedGames.filter((g) => {
     if (activeFilter === 'live') return g.status === 'InProgress' || g.status === 'Halftime';
     if (activeFilter === 'final') return g.status === 'Final';
     return true;
