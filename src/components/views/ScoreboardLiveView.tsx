@@ -85,10 +85,24 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
 }) => {
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [isLiveApi, setIsLiveApi] = useState<boolean>(false);
-  const CURRENT_WEEK = 1;
+  const [currentWeek, setCurrentWeek] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LIVE' | 'FINAL' | 'UPCOMING'>('ALL');
   const [selectedGameKey, setSelectedGameKey] = useState<string>(propSelectedGameKey || '202610101');
+
+  // Fetch detected current week from API on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/sportsdata/current-week', { signal: controller.signal })
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.week === 'number' && data.week > 0) {
+          setCurrentWeek(data.week);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   // Helper to strictly sort games with those playing "now" at the top
   const sortGamesPlayingNowAtTop = (gameList: LiveGameState[]): LiveGameState[] => {
@@ -113,9 +127,9 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
     });
   };
 
-  // Initialize live game state strictly with CURRENT WEEK'S games from 2026 Season, placing games playing "now" at the top
+  // Initialize live game state strictly with current week's games from 2026 Season, placing games playing "now" at the top
   const [liveGames, setLiveGames] = useState<LiveGameState[]>(() => {
-    const currentWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === CURRENT_WEEK);
+    const currentWeekSchedules = SCHEDULES_DATA.filter((g) => g.Season === 2026 && g.Week === 1);
     
     // Sort so games playing "now" (InProgress) are strictly at the top
     currentWeekSchedules.sort((a, b) => {
@@ -140,7 +154,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
       return {
         id: g.GameKey || `game-${idx}`,
         gameKey: g.GameKey,
-        week: g.Week || CURRENT_WEEK,
+        week: g.Week || 1,
         awayTeam: {
           abbreviation: g.AwayTeam,
           name: awayTeamInfo ? awayTeamInfo.FullName : g.AwayTeam,
@@ -195,7 +209,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   // Filter games strictly to the current week, sorting those playing "now" at the top
   const displayedGames = sortGamesPlayingNowAtTop(
     liveGames.filter((g) => {
-      const matchesCurrentWeek = g.week === CURRENT_WEEK;
+      const matchesCurrentWeek = g.week === currentWeek;
       const matchesStatus =
         statusFilter === 'ALL' ||
         (statusFilter === 'LIVE' && g.status === 'InProgress') ||
@@ -206,7 +220,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   );
 
   // Dynamic Quarter Score Progression based on active selected game
-  const activeGame = liveGames.find((g) => g.gameKey === selectedGameKey && g.week === CURRENT_WEEK) || displayedGames[0] || liveGames[0];
+  const activeGame = liveGames.find((g) => g.gameKey === selectedGameKey && g.week === currentWeek) || displayedGames[0] || liveGames[0];
   const awayScore = activeGame?.awayTeam?.score ?? 0;
   const homeScore = activeGame?.homeTeam?.score ?? 0;
   const awayAbbr = activeGame?.awayTeam?.abbreviation || 'AWY';
@@ -223,10 +237,10 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
   const [rawApiFeed, setRawApiFeed] = useState<any>(null);
   const [showProofAudit, setShowProofAudit] = useState<boolean>(false);
 
-  const fetchLiveScoreboard = async () => {
+  const fetchLiveScoreboard = async (signal?: AbortSignal) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/scores/live?season=${selectedSeason}&week=${CURRENT_WEEK}`);
+      const res = await fetch(`/api/scores/live?season=${selectedSeason}&week=${currentWeek}`, { signal });
       if (res.ok) {
         const data = await res.json();
         setRawApiFeed(data);
@@ -240,7 +254,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
             const isFinal = g.status === 'Final' || (typeof g.status === 'string' && g.status.toLowerCase().includes('final'));
             const homeScore = typeof g.homeTeam?.score === 'number' ? g.homeTeam.score : parseInt(g.homeTeam?.score || '0', 10);
             const awayScore = typeof g.awayTeam?.score === 'number' ? g.awayTeam.score : parseInt(g.awayTeam?.score || '0', 10);
-            const gameWeek = typeof g.week === 'number' ? g.week : (typeof data.week === 'number' ? data.week : CURRENT_WEEK);
+            const gameWeek = typeof g.week === 'number' ? g.week : (typeof data.week === 'number' ? data.week : currentWeek);
 
             return {
               id: g.id || `live-game-${idx}`,
@@ -278,7 +292,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
           });
 
           // Strictly filter to current week's games and sort with games playing "now" at the top
-          const currentWeekMapped = mappedGames.filter((g) => g.week === CURRENT_WEEK || !g.week);
+          const currentWeekMapped = mappedGames.filter((g) => g.week === currentWeek || !g.week);
           const sortedGames = sortGamesPlayingNowAtTop(currentWeekMapped);
 
           setLiveGames(sortedGames);
@@ -287,16 +301,20 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
           }
         }
       }
-    } catch (e) {
-      console.error('Failed to load live scores', e);
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        console.error('Failed to load live scores', e);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchLiveScoreboard();
-  }, [selectedSeason]);
+    const controller = new AbortController();
+    fetchLiveScoreboard(controller.signal);
+    return () => controller.abort();
+  }, [selectedSeason, currentWeek]);
 
   // Check if any game is currently in progress
   const hasActiveGames = liveGames.some((g) => g.status === 'InProgress');
@@ -309,7 +327,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
       fetchLiveScoreboard();
     }, 15000); // 15 seconds live game score refresh
     return () => clearInterval(interval);
-  }, [hasActiveGames, selectedSeason]);
+  }, [hasActiveGames, selectedSeason, currentWeek]);
 
   const {
     unreadCount,
@@ -334,9 +352,11 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
 
   useEffect(() => {
     if (activeGamePlays.length > 0) {
-      setSelectedPlayId(activeGamePlays[0].PlayID);
+      if (!activeGamePlays.some((p) => p.PlayID === selectedPlayId)) {
+        setSelectedPlayId(activeGamePlays[0].PlayID);
+      }
     }
-  }, [selectedGameKey]);
+  }, [selectedGameKey, activeGamePlays, selectedPlayId]);
 
   // Tactical auto-play effect
   useEffect(() => {
@@ -564,9 +584,9 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               Live Slate:
             </span>
             <div className="px-2.5 py-0.5 rounded-md text-[10px] font-bold font-mono bg-amber-500 text-slate-950 font-extrabold shadow-sm flex items-center gap-1.5">
-              <span>🏈 Current Week (Week {CURRENT_WEEK})</span>
+              <span>🏈 Current Week (Week {currentWeek})</span>
               <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-black/20 text-slate-950 font-black">
-                {liveGames.filter(g => g.week === CURRENT_WEEK).length} Games
+                {liveGames.filter(g => g.week === currentWeek).length} Games
               </span>
             </div>
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[10px] font-mono font-bold">
@@ -586,7 +606,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span>🌐</span>
-              <span>All ({liveGames.filter(g => g.week === CURRENT_WEEK).length})</span>
+              <span>All ({liveGames.filter(g => g.week === currentWeek).length})</span>
             </button>
             <button
               onClick={() => setStatusFilter('LIVE')}
@@ -597,7 +617,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-              <span>🔴 Live Now ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'InProgress').length})</span>
+              <span>🔴 Live Now ({liveGames.filter(g => g.week === currentWeek && g.status === 'InProgress').length})</span>
             </button>
             <button
               onClick={() => setStatusFilter('UPCOMING')}
@@ -608,7 +628,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span>📅</span>
-              <span>Upcoming ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'Scheduled').length})</span>
+              <span>Upcoming ({liveGames.filter(g => g.week === currentWeek && g.status === 'Scheduled').length})</span>
             </button>
             <button
               onClick={() => setStatusFilter('FINAL')}
@@ -619,7 +639,7 @@ export const ScoreboardLiveView: React.FC<ScoreboardLiveViewProps> = ({
               }`}
             >
               <span>✅</span>
-              <span>Final ({liveGames.filter(g => g.week === CURRENT_WEEK && g.status === 'Final').length})</span>
+              <span>Final ({liveGames.filter(g => g.week === currentWeek && g.status === 'Final').length})</span>
             </button>
           </div>
         </div>

@@ -9,31 +9,61 @@ An enterprise-grade, real-time NFL analytics, live scoreboard, and database visu
 1. [Description & Overview](#-description--overview)
 2. [Key Capabilities & Modules](#-key-capabilities--modules)
 3. [System Architecture Diagram](#-system-architecture-diagram)
-4. [User Workflow](#-user-workflow)
-5. [Codeflow & Runtime Lifecycle](#-codeflow--runtime-lifecycle)
-6. [Database Schema & Collections Catalog](#-database-schema--collections-catalog)
-7. [API Reference & Endpoints](#-api-reference--endpoints)
-8. [Automated Bootstrap (`bootstrap.sh`) & Setup](#-automated-bootstrap-bootstrapsh--setup)
-9. [Configuration & Environment Variables](#-configuration--environment-variables)
-10. [Build & Deployment](#-build--deployment)
+4. [Security & Performance Hardening](#-security--performance-hardening)
+5. [User Workflow](#-user-workflow)
+6. [Codeflow & Runtime Lifecycle](#-codeflow--runtime-lifecycle)
+7. [Database Schema & Collections Catalog](#-database-schema--collections-catalog)
+8. [API Reference & Endpoints](#-api-reference--endpoints)
+9. [Automated Bootstrap (`bootstrap.sh`) & Setup](#-automated-bootstrap-bootstrapsh--setup)
+10. [Configuration & Environment Variables](#-configuration--environment-variables)
+11. [Build & Deployment](#-build--deployment)
 
 ---
 
 ## 📖 Description & Overview
 
-The **SportsData NFL API Dashboard** serves as a complete command center for NFL data exploration, real-time game simulation, sportsbook analysis, and developer API diagnostics. It interfaces with live ESPN feeds, SportsData.io v3 endpoints, an in-memory SQL sandbox, and dual AI engines (Local Ollama LLM + Google Gemini 2.5 Flash).
+The **SportsData NFL API Dashboard** serves as a high-performance command center for NFL data exploration, real-time game simulation, sportsbook analysis, and developer API diagnostics. It interfaces with live ESPN feeds, SportsData.io v3 endpoints, an in-memory SQL sandbox, and dual AI engines (Local Ollama LLM + Google Gemini 3.7 Flash).
 
 ### 🛠️ Technology Stack
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Frontend Framework** | React 19, TypeScript, Vite 6 |
+| **Frontend Framework** | React 19, TypeScript, Vite 6, Code-split React.lazy views |
 | **Styling & Design System** | Tailwind CSS v4, Dark Slate / Amber Accent Palette, Modern Micro-interactions |
 | **Data Visualization** | Recharts (Area, Bar, Composed charts), Lucide React Icons |
-| **Animations & Motion** | Motion (`motion/react`) |
+| **Animations & Motion** | Motion (`motion/react`) with stabilized view keys |
 | **Backend & Middleware** | Node.js, Express 4, Vite Dev Server Middleware, `tsx`, `esbuild` |
-| **AI & LLM Services** | Local Ollama (`llama3`, `mistral`, `deepseek-r1`) + Google GenAI SDK (`gemini-2.5-flash`) |
-| **Data Providers** | ESPN Live Scoreboard API, SportsData.io v3 NFL API, In-Memory Structured Mock Datasets |
+| **Real-Time Stream Engine**| Server-Sent Events (SSE) with backpressure handling, client bounding, and pause-on-idle |
+| **AI & LLM Services** | Local Ollama (`llama3`, `mistral`) + Google GenAI SDK (`gemini-3.7-flash`) with singleton pooling |
+| **Data Providers** | ESPN Live Scoreboard API (deduplicated 3s cache), SportsData.io v3 NFL API, In-Memory Structured Mock Datasets |
+
+---
+
+## 🛡️ Security & Performance Hardening
+
+The application incorporates comprehensive security and availability measures:
+
+1. **Zero Upstream Duplication**:
+   - Single-fetch ESPN engine with a 3-second TTL in-memory cache shared between live scoreboard and game situation enrichment.
+   - Eliminates duplicate queries and minimizes upstream rate-limiting risk.
+2. **Strict Admin Authentication**:
+   - Protected `/api/admin/*` routes requiring header authorization (`x-admin-key` or `Authorization: Bearer <token>`).
+   - Secure against unauthenticated telemetry inspection or log clearing in production.
+3. **SSRF Protection on Ollama**:
+   - Validates user-supplied LLM host URLs against loopback hosts (`localhost`, `127.0.0.1`, `::1`) and server-configured `OLLAMA_HOST`.
+   - Blocks cloud metadata IP traversal and unauthorized external SSRF attempts.
+4. **Rate Limiting & DoS Defense**:
+   - Strict `256kb` body-size parsing limit on Express.
+   - Token-bucket rate limiting on computationally heavy AI endpoints (30 req/min) and simulation triggers (60 req/min).
+5. **High-Performance SSE Engine**:
+   - Max 100 concurrent SSE connections with a limit of 10 connections per client IP.
+   - Socket backpressure monitoring that drops unresponsive clients to prevent memory leaks.
+   - Pauses simulation ticking when 0 clients are connected, eliminating idle CPU consumption.
+   - Single payload serialization per tick for O(1) broadcast efficiency.
+6. **Frontend Code Splitting**:
+   - All 20 dashboard views are lazy-loaded on-demand via `React.lazy` and `Suspense`, slashing initial JavaScript bundle payload.
+   - Stabilized view keys prevent unmounting/remounting flicker during data updates.
+   - SSE client incorporates automatic exponential backoff reconnection.
 
 ---
 

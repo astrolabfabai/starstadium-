@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewMode, SeasonCode } from './types';
 import { Sidebar } from './components/Sidebar';
 import { DashboardGrid } from './components/DashboardGrid';
@@ -51,6 +51,15 @@ function AppContent() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>(new Date().toLocaleTimeString());
   const [refreshNotification, setRefreshNotification] = useState<string | null>(null);
+  const refreshNotificationTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (refreshNotificationTimerRef.current) {
+        clearTimeout(refreshNotificationTimerRef.current);
+      }
+    };
+  }, []);
 
   const {
     activeGameKey,
@@ -127,7 +136,10 @@ function AppContent() {
       );
       setLastRefreshedAt(new Date().toLocaleTimeString());
       setRefreshNotification(`Synced ${selectedSeason} (Week ${currentSeasonInfo.week}) from live feeds`);
-      setTimeout(() => setRefreshNotification(null), 3000);
+      if (refreshNotificationTimerRef.current) {
+        clearTimeout(refreshNotificationTimerRef.current);
+      }
+      refreshNotificationTimerRef.current = setTimeout(() => setRefreshNotification(null), 3000);
     } catch (err) {
       console.error('Failed refreshing data:', err);
     } finally {

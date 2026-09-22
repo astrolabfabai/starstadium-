@@ -54,6 +54,7 @@ const TEST_ROUTES: TestRouteOption[] = [
 ];
 
 export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason = '2026REG' }) => {
+  const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('starstadium_admin_key') || 'starstadium-admin-local');
   const [serverStatus, setServerStatus] = useState<ServerAdminStatus | null>(null);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
@@ -65,10 +66,19 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
   const [logFilter, setLogFilter] = useState('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
+  const getAdminHeaders = () => {
+    return {
+      'Content-Type': 'application/json',
+      'x-admin-key': adminKey
+    };
+  };
+
   const fetchServerStatus = async () => {
     setIsLoadingStatus(true);
     try {
-      const res = await fetch('/api/admin/server-status');
+      const res = await fetch('/api/admin/server-status', {
+        headers: getAdminHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setServerStatus(data);
@@ -85,14 +95,16 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
 
   useEffect(() => {
     fetchServerStatus();
-  }, []);
+  }, [adminKey]);
 
   // Periodic log polling
   useEffect(() => {
     if (!autoRefreshLogs) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/admin/logs');
+        const res = await fetch('/api/admin/logs', {
+          headers: getAdminHeaders()
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.logs) {
@@ -105,7 +117,7 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [autoRefreshLogs]);
+  }, [autoRefreshLogs, adminKey]);
 
   const executeEndpointTest = async () => {
     setIsExecutingTest(true);
@@ -116,7 +128,10 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
     try {
       const options: RequestInit = {
         method: selectedRoute.method,
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey
+        }
       };
 
       if (selectedRoute.method === 'POST' && selectedRoute.payload) {
@@ -138,7 +153,10 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
 
   const handleClearLogs = async () => {
     try {
-      await fetch('/api/admin/clear-logs', { method: 'POST' });
+      await fetch('/api/admin/clear-logs', {
+        method: 'POST',
+        headers: getAdminHeaders()
+      });
       setLogs([]);
       setNotificationMsg('API request logs cleared');
       setTimeout(() => setNotificationMsg(null), 2500);
@@ -149,7 +167,10 @@ export const ServerAdminView: React.FC<ServerAdminViewProps> = ({ selectedSeason
 
   const handleClearCache = async () => {
     try {
-      const res = await fetch('/api/admin/clear-cache', { method: 'POST' });
+      const res = await fetch('/api/admin/clear-cache', {
+        method: 'POST',
+        headers: getAdminHeaders()
+      });
       const data = await res.json();
       setNotificationMsg(data.message || 'Cache flushed');
       setTimeout(() => setNotificationMsg(null), 2500);

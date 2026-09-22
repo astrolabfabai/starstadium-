@@ -1,26 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ViewMode, WidgetConfig, SeasonCode } from '../types';
-import { StandingsView } from './views/StandingsView';
-import { TeamsRostersView } from './views/TeamsRostersView';
-import { ScheduleVenueView } from './views/ScheduleVenueView';
-import { ScoreboardLiveView } from './views/ScoreboardLiveView';
-import { GameHighlightsAutomationView } from './views/GameHighlightsAutomationView';
-import { PlayerLeaderboardsView } from './views/PlayerLeaderboardsView';
-import { PlayByPlayView } from './views/PlayByPlayView';
-import { DepthInjuryView } from './views/DepthInjuryView';
-import { BettingOddsView } from './views/BettingOddsView';
-import { FantasyDfsView } from './views/FantasyDfsView';
-import { DraftPickAnalyzerView } from './views/DraftPickAnalyzerView';
-import { DraftMockSimulatorView } from './views/DraftMockSimulatorView';
-import { WinProbabilityEngineView } from './views/WinProbabilityEngineView';
-import { NewsTransactionsView } from './views/NewsTransactionsView';
-import { DbViewerView } from './views/DbViewerView';
-import { UserAccountView } from './views/UserAccountView';
-import { ServerAdminView } from './views/ServerAdminView';
-import { AlertsCenterView } from './views/AlertsCenterView';
-import RedZoneView from './views/RedZoneView';
-import PossessionView from './views/PossessionView';
+
+// Code-split all views with React.lazy for high-performance bundle loading
+const StandingsView = lazy(() => import('./views/StandingsView').then((m) => ({ default: m.StandingsView })));
+const TeamsRostersView = lazy(() => import('./views/TeamsRostersView').then((m) => ({ default: m.TeamsRostersView })));
+const ScheduleVenueView = lazy(() => import('./views/ScheduleVenueView').then((m) => ({ default: m.ScheduleVenueView })));
+const ScoreboardLiveView = lazy(() => import('./views/ScoreboardLiveView').then((m) => ({ default: m.ScoreboardLiveView })));
+const GameHighlightsAutomationView = lazy(() => import('./views/GameHighlightsAutomationView').then((m) => ({ default: m.GameHighlightsAutomationView })));
+const PlayerLeaderboardsView = lazy(() => import('./views/PlayerLeaderboardsView').then((m) => ({ default: m.PlayerLeaderboardsView })));
+const PlayByPlayView = lazy(() => import('./views/PlayByPlayView').then((m) => ({ default: m.PlayByPlayView })));
+const DepthInjuryView = lazy(() => import('./views/DepthInjuryView').then((m) => ({ default: m.DepthInjuryView })));
+const BettingOddsView = lazy(() => import('./views/BettingOddsView').then((m) => ({ default: m.BettingOddsView })));
+const FantasyDfsView = lazy(() => import('./views/FantasyDfsView').then((m) => ({ default: m.FantasyDfsView })));
+const DraftPickAnalyzerView = lazy(() => import('./views/DraftPickAnalyzerView').then((m) => ({ default: m.DraftPickAnalyzerView })));
+const DraftMockSimulatorView = lazy(() => import('./views/DraftMockSimulatorView').then((m) => ({ default: m.DraftMockSimulatorView })));
+const WinProbabilityEngineView = lazy(() => import('./views/WinProbabilityEngineView').then((m) => ({ default: m.WinProbabilityEngineView })));
+const NewsTransactionsView = lazy(() => import('./views/NewsTransactionsView').then((m) => ({ default: m.NewsTransactionsView })));
+const DbViewerView = lazy(() => import('./views/DbViewerView').then((m) => ({ default: m.DbViewerView })));
+const UserAccountView = lazy(() => import('./views/UserAccountView').then((m) => ({ default: m.UserAccountView })));
+const ServerAdminView = lazy(() => import('./views/ServerAdminView').then((m) => ({ default: m.ServerAdminView })));
+const AlertsCenterView = lazy(() => import('./views/AlertsCenterView').then((m) => ({ default: m.AlertsCenterView })));
+const RedZoneView = lazy(() => import('./views/RedZoneView'));
+const PossessionView = lazy(() => import('./views/PossessionView'));
+
+const ViewLoadingFallback = () => (
+  <div className="w-full min-h-[360px] flex flex-col items-center justify-center p-8 bg-[#121214] border border-white/5 rounded-2xl animate-pulse">
+    <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+    <span className="text-xs uppercase tracking-widest text-white/40 font-mono">Loading telemetry view...</span>
+  </div>
+);
 import {
   DEFAULT_WIDGET_CONFIGS,
   reorderWidgets,
@@ -353,14 +362,16 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
     return (
       <AnimatePresence mode="wait">
         <motion.div
-          key={`${activeView}-${refreshKey}`}
+          key={activeView}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           className="w-full"
         >
-          {renderActiveSingleView(activeView)}
+          <Suspense fallback={<ViewLoadingFallback />}>
+            {renderActiveSingleView(activeView)}
+          </Suspense>
         </motion.div>
       </AnimatePresence>
     );
@@ -368,7 +379,11 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
 
   // Master Dashboard View with customizable widget grid
   const renderWidgetContent = (type: ViewMode) => {
-    return renderActiveSingleView(type);
+    return (
+      <Suspense fallback={<ViewLoadingFallback />}>
+        {renderActiveSingleView(type)}
+      </Suspense>
+    );
   };
 
   const visibleWidgets = widgets.filter((w) => w.visible);

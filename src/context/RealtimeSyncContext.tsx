@@ -137,6 +137,8 @@ export const RealtimeSyncProvider: React.FC<{ children: React.ReactNode; default
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollingTimerRef = useRef<any>(null);
+  const reconnectTimeoutRef = useRef<any>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
   const lastPacketTimestampRef = useRef<number>(Date.now());
 
   // Function to process received live games data
@@ -157,7 +159,7 @@ export const RealtimeSyncProvider: React.FC<{ children: React.ReactNode; default
     });
   }, []);
 
-  // 1. Establish SSE Connection (inspired by The Athletic & ESPN real-time streams)
+  // 1. Establish SSE Connection with Auto-Reconnect (inspired by The Athletic & ESPN real-time streams)
   useEffect(() => {
     if (transportMode !== 'SSE Stream') {
       return;
@@ -166,12 +168,22 @@ export const RealtimeSyncProvider: React.FC<{ children: React.ReactNode; default
     setConnectionStatus('connecting');
 
     const connectSSE = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
       try {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+        }
+
         const es = new EventSource('/api/realtime/stream');
         eventSourceRef.current = es;
 
         es.onopen = () => {
           setConnectionStatus('connected');
+          reconnectAttemptsRef.current = 0;
         };
 
         es.addEventListener('initial_state', (e: MessageEvent) => {
@@ -195,10 +207,22 @@ export const RealtimeSyncProvider: React.FC<{ children: React.ReactNode; default
         });
 
         es.onerror = () => {
-          // If SSE encounters an error, fall back to smart polling gracefully like Flashscore/Sportradar
-          if (es.readyState === EventSource.CLOSED) {
-            setConnectionStatus('polling_fallback');
+          // If SSE encounters an error, fall back to smart polling gracefully while scheduling reconnect
+          setConnectionStatus('polling_fallback');
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
           }
+
+          // Exponential backoff reconnect: 3s, 4.5s, 6.75s, up to 30s
+          const delay = Math.min(30000, Math.round(3000 * Math.pow(1.5, reconnectAttemptsRef.current)));
+          reconnectAttemptsRef.current += 1;
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (transportMode === 'SSE Stream') {
+              connectSSE();
+            }
+          }, delay);
         };
       } catch (err) {
         setConnectionStatus('polling_fallback');
@@ -208,6 +232,10 @@ export const RealtimeSyncProvider: React.FC<{ children: React.ReactNode; default
     connectSSE();
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;

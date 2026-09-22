@@ -259,14 +259,16 @@ export const ScoringNotificationProvider: React.FC<{ children: React.ReactNode }
     const handleSync = () => {
       refreshFromCookies();
     };
-    window.addEventListener('focus', handleSync);
-    document.addEventListener('visibilitychange', () => {
+    const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         handleSync();
       }
-    });
+    };
+    window.addEventListener('focus', handleSync);
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshFromCookies]);
 
